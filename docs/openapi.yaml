@@ -1,0 +1,18 @@
+openapi: 3.0.0
+info:
+  title: API Sistema de Mesa de Ayuda IT
+  version: 1.0.0
+  description: Documentación de la API REST para el sistema de tickets de soporte.
+paths:
+  /health:
+    get:
+      summary: Monitoreo de estado
+      responses:
+        '200':
+          description: El servidor responde correctamente
+  /api/tickets:
+    get:
+      summary: Consultar todos los tickets
+      responses:
+        '200':
+          description: Lista de tickets obtenida
