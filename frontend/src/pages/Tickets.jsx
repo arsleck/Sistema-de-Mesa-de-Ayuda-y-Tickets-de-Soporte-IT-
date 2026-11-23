@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, LogOut, ClipboardCheck, PlusCircle, Search, Ticket as TicketIcon, Trash2, UserCircle, Briefcase } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, ClipboardCheck, PlusCircle, Search, Ticket as TicketIcon, Trash2, UserCircle, Briefcase, History, Activity, AlertTriangle } from 'lucide-react';
 import api, { logoutSession } from '../api/axiosConfig';
+import TicketHistory from '../components/TicketHistory';
+
+// Grafana: VITE_GRAFANA_URL o, por defecto, el puerto de Grafana según el entorno
+// (Kubernetes con port-forward usa 8081 -> 3001; Docker Compose / local usa 3000)
+const GRAFANA_URL = import.meta.env.VITE_GRAFANA_URL
+    ?? `http://${window.location.hostname}:${window.location.port === '8081' ? 3001 : 3000}`;
 
 function Tickets() {
     const [tickets, setTickets] = useState([]);
@@ -11,6 +17,8 @@ function Tickets() {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('Todos');
     const [agents, setAgents] = useState([]);
+    const [historyTicket, setHistoryTicket] = useState(null); // ticket cuyo historial está abierto
+    const [stats, setStats] = useState(null);                 // indicadores (incluye SLA) para el staff
 
     const navigate = useNavigate();
     const currentUsername = localStorage.getItem('username') || 'Usuario';
@@ -27,10 +35,15 @@ function Tickets() {
         try {
             const response = await api.get('/tickets');
             setTickets(response.data);
+            // El staff recibe además los indicadores de SLA (tickets urgentes sin asignar)
+            if (currentUserRole !== 'employee') {
+                const statsRes = await api.get('/tickets/stats');
+                setStats(statsRes.data);
+            }
         } catch (error) {
             if (error.response?.status === 401) handleLogout();
         }
-    }, [handleLogout]);
+    }, [handleLogout, currentUserRole]);
 
     const fetchAgents = useCallback(async () => {
         try {
@@ -120,6 +133,12 @@ function Tickets() {
                             <ClipboardCheck size={20} /> Verificación
                         </button>
                     )}
+                    {currentUserRole !== 'employee' && (
+                        // Abre el dashboard de Grafana (Prometheus) en otra pestaña
+                        <a href={GRAFANA_URL} target="_blank" rel="noreferrer" className="nav-item">
+                            <Activity size={20} /> Monitoreo
+                        </a>
+                    )}
                     <button onClick={handleLogout} className="nav-item logout">
                         <LogOut size={20} /> Cerrar Sesión
                     </button>
@@ -182,6 +201,14 @@ function Tickets() {
 
                     {/* Panel Derecho: Lista de Tickets */}
                     <div className="list-section">
+                        {/* AVISO DE SLA: incidencias urgentes que nadie ha tomado */}
+                        {stats?.high_priority_unassigned > 0 && (
+                            <div className="error-message sla-alert">
+                                <AlertTriangle size={18} />
+                                {stats.high_priority_unassigned} ticket(s) de prioridad Alta sin técnico asignado (SLA)
+                            </div>
+                        )}
+
                         {/* MÉTRICAS (Solo visibles para staff) */}
                         {currentUserRole !== 'employee' && (
                             <div className="metrics-grid">
@@ -215,6 +242,9 @@ function Tickets() {
                                                 <span className={`badge badge-${ticket.priority.toLowerCase()}`}>
                                                     {ticket.priority}
                                                 </span>
+                                                <button onClick={() => setHistoryTicket(ticket)} className="icon-btn" title="Ver historial de cambios">
+                                                    <History size={18} />
+                                                </button>
                                                 {(currentUserRole === 'admin' || currentUserRole === 'agent') && (
                                                     <button onClick={() => handleDeleteTicket(ticket.id)} className="icon-btn delete">
                                                         <Trash2 size={18} />
@@ -269,6 +299,9 @@ function Tickets() {
                     </div>
                 </div>
             </main>
+
+            {/* Ventana del historial de cambios (auditoría) */}
+            {historyTicket && <TicketHistory ticket={historyTicket} onClose={() => setHistoryTicket(null)} />}
         </div>
     );
 }

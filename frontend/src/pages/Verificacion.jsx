@@ -123,6 +123,25 @@ const STEPS = [
         },
     },
     {
+        id: 'history', tag: 'A8 · Auditoría + SLA', title: 'Historial de cambios e indicadores de SLA',
+        explains: 'Cada cambio del ticket queda auditado (quién, qué y cuándo) y el tiempo de resolución alimenta el SLA en Prometheus/Grafana.',
+        run: async () => {
+            const token = localStorage.getItem('token');
+            const c = await call('post', '/api/tickets', { token, data: { title: 'Ticket de auditoría', description: 'Verificación del historial', priority: 'Alta' } });
+            const id = c.data.ticket?.id;
+            await call('put', `/api/tickets/${id}`, { token, data: { status: 'En Progreso' } });
+            await call('put', `/api/tickets/${id}`, { token, data: { status: 'Resuelto' } });
+            const h = await call('get', `/api/tickets/${id}/history`, { token });
+            const stats = await call('get', '/api/tickets/stats', { token });
+            await call('delete', `/api/tickets/${id}`, { token });
+            const pasos = (h.data || []).map(e => `${e.field}: ${e.old_value ?? '—'} → ${e.new_value} (${e.user})`);
+            const ok = h.status === 200 && pasos.length === 3 && stats.data.avg_resolution_minutes !== null;
+            return { ok, code: h.status, ms: c.ms + h.ms + stats.ms,
+                detail: `${pasos.length} cambios auditados · Resolución promedio: ${stats.data.avg_resolution_minutes} min · Alta sin asignar: ${stats.data.high_priority_unassigned}`,
+                evidence: { historial: pasos, sla: { avg_resolution_minutes: stats.data.avg_resolution_minutes, high_priority_unassigned: stats.data.high_priority_unassigned } } };
+        },
+    },
+    {
         id: 'xss', tag: 'A3 · OWASP XSS', title: 'Código malicioso (XSS) eliminado',
         explains: 'Se envía un ticket con <script> y <img onerror>. El backend guarda solo el texto limpio.',
         run: async () => {
