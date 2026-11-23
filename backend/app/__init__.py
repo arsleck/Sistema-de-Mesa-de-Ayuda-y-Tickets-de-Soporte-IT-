@@ -74,6 +74,7 @@ def create_app(test_config=None):
         # Se importan los modelos para que SQLAlchemy cree sus tablas
         from app.models.user import User  # noqa: F401
         from app.models.ticket import Ticket  # noqa: F401
+        from app.models.history import TicketHistory  # noqa: F401  (tabla nueva: se crea sola)
 
         from app.routes.health import health_bp
         from app.routes.auth import auth_bp

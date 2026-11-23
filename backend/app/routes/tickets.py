@@ -9,8 +9,11 @@ Endpoints CRUD de tickets  (prefijo /api/tickets)
 | PUT    | /<id>         | Staff: estado/asignación/prioridad           |
 |        |               | Creador: asunto/detalle mientras esté Abierto|
 | DELETE | /<id>         | Solo staff (admin y agent)                   |
-| GET    | /stats        | Métricas para el dashboard                   |
+| GET    | /stats        | Métricas para el dashboard (incluye SLA)     |
+| GET    | /<id>/history | Historial de cambios: creador o staff        |
 """
+from datetime import datetime
+
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from sqlalchemy import func, or_
@@ -18,7 +21,8 @@ from sqlalchemy import func, or_
 from app import db
 from app.models.ticket import Ticket, VALID_PRIORITIES, VALID_STATUSES
 from app.models.user import User
-from app.metrics import TICKETS_CREATED
+from app.metrics import RESOLUTION_TIME, TICKETS_CREATED
+from app.models.history import TicketHistory
 from app.security import sanitize_text
 from app.utils.auth_helpers import get_current_user, roles_required, STAFF_ROLES
 
@@ -27,6 +31,15 @@ tickets_bp = Blueprint('tickets', __name__)
 
 def _is_staff(user):
     return user is not None and user.role in STAFF_ROLES
+
+
+def _log_change(ticket, user, field, old, new):
+    """Agrega una fila al historial (auditoría) solo si el valor realmente cambió."""
+    if old == new:
+        return
+    ticket.history.append(TicketHistory(user_id=user.id, field=field,
+                                        old_value=None if old is None else str(old)[:120],
+                                        new_value=None if new is None else str(new)[:120]))
 
 
 def _can_view(user, ticket):
@@ -63,6 +76,7 @@ def create_ticket():
         created_by_id=user.id  # El creador siempre es el dueño del token, nunca lo envía el cliente
     )
 
+    _log_change(new_ticket, user, 'creado', None, f'{priority} · Abierto')
     db.session.add(new_ticket)
     db.session.commit()
     TICKETS_CREATED.labels(priority=priority).inc()  # métrica para Grafana
@@ -120,8 +134,19 @@ def get_stats():
                 .group_by(User.username).all())
         by_agent = [{"agent": name, "count": count} for name, count in rows]
 
+    # SLA: tiempo promedio de resolución (minutos) calculado desde el historial
+    resolved = (db.session.query(Ticket.created_at, func.max(TicketHistory.created_at))
+                .join(TicketHistory, TicketHistory.ticket_id == Ticket.id)
+                .filter(TicketHistory.field == 'status', TicketHistory.new_value == 'Resuelto',
+                        Ticket.id.in_(base.with_entities(Ticket.id)))
+                .group_by(Ticket.id, Ticket.created_at).all())
+    durations = [(done - created).total_seconds() / 60 for created, done in resolved if created and done]
+
     return jsonify({
         "total": sum(by_status.values()),
+        "avg_resolution_minutes": round(sum(durations) / len(durations), 1) if durations else None,
+        "high_priority_unassigned": base.filter(Ticket.priority == 'Alta', Ticket.status != 'Resuelto',
+                                                Ticket.assigned_to_id.is_(None)).count(),
         "by_status": by_status,
         "by_priority": by_priority,
         "by_agent": by_agent,
@@ -138,6 +163,17 @@ def get_ticket(id):
     if not _can_view(user, ticket):
         return jsonify({"error": "No tienes permisos para ver este ticket"}), 403
     return jsonify(ticket.to_dict()), 200
+
+
+# ---------------------------------------------------------------- HISTORIAL (auditoría)
+@tickets_bp.route('/<int:id>/history', methods=['GET'])
+@jwt_required()
+def get_ticket_history(id):
+    user = get_current_user()
+    ticket = db.get_or_404(Ticket, id)
+    if not _can_view(user, ticket):
+        return jsonify({"error": "No tienes permisos para ver este ticket"}), 403
+    return jsonify([h.to_dict() for h in ticket.history]), 200
 
 
 # ---------------------------------------------------------------- UPDATE
@@ -163,23 +199,32 @@ def update_ticket(id):
     if 'status' in data:
         if data['status'] not in VALID_STATUSES:
             return jsonify({"error": f"Estado inválido. Usa: {', '.join(VALID_STATUSES)}"}), 400
+        if data['status'] == 'Resuelto' and ticket.status != 'Resuelto' and ticket.created_at:
+            # SLA: se mide el tiempo desde la creación hasta la resolución (va a Prometheus/Grafana)
+            RESOLUTION_TIME.labels(priority=ticket.priority).observe(
+                (datetime.utcnow() - ticket.created_at).total_seconds())
+        _log_change(ticket, user, 'status', ticket.status, data['status'])
         ticket.status = data['status']
 
     if 'priority' in data:
         if data['priority'] not in VALID_PRIORITIES:
             return jsonify({"error": f"Prioridad inválida. Usa: {', '.join(VALID_PRIORITIES)}"}), 400
+        _log_change(ticket, user, 'priority', ticket.priority, data['priority'])
         ticket.priority = data['priority']
 
     # Asignación de técnico: debe existir y tener rol de staff
     if 'assigned_to_id' in data:
         agent_id = data['assigned_to_id']
+        previous = ticket.assignee.username if ticket.assignee else None
         if agent_id in (None, '', 0):
             ticket.assigned_to_id = None
+            _log_change(ticket, user, 'assigned_to', previous, None)
         else:
             agent = db.session.get(User, int(agent_id))
             if not agent or agent.role not in STAFF_ROLES:
                 return jsonify({"error": "El usuario asignado no es un técnico válido"}), 400
             ticket.assigned_to_id = agent.id
+            _log_change(ticket, user, 'assigned_to', previous, agent.username)
 
     for field in owner_fields:
         if field in data and data[field]:
@@ -188,6 +233,7 @@ def update_ticket(id):
             clean = sanitize_text(data[field])  # XSS: mismo saneamiento que al crear
             if not clean:
                 return jsonify({"error": "El asunto y el detalle deben contener texto válido"}), 400
+            _log_change(ticket, user, field, getattr(ticket, field), clean)
             setattr(ticket, field, clean)
 
     db.session.commit()
