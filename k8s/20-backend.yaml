@@ -42,12 +42,16 @@ spec:
             httpGet: { path: /health, port: 5000 }
             initialDelaySeconds: 5
             periodSeconds: 5
-          # liveness: si deja de responder, Kubernetes reinicia el contenedor
+            timeoutSeconds: 3
+          # liveness: si deja de responder, Kubernetes reinicia el contenedor.
+          # Margen amplio (5 s x 4 intentos): con CPU alta un pod sano responde lento y
+          # no debe reiniciarse; para eso existe el HPA, que agrega réplicas.
           livenessProbe:
             httpGet: { path: /health, port: 5000 }
             initialDelaySeconds: 20
             periodSeconds: 15
-            failureThreshold: 3
+            timeoutSeconds: 5
+            failureThreshold: 4
           # requests/limits: el HPA calcula el % de CPU sobre "requests"
           resources:
             requests: { cpu: 100m, memory: 128Mi }
