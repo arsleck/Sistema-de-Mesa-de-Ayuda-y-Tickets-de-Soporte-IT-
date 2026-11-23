@@ -1,0 +1,55 @@
+# Backend Flask: 2 réplicas detrás de un Service que reparte el tráfico entre ellas
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: helpdesk
+  labels: { app: backend }
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate           # actualización sin caída: cambia los pods uno a uno
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app: backend }
+  template:
+    metadata:
+      labels: { app: backend }
+      annotations:                # Prometheus descubre cada pod y lee su /metrics
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: /metrics
+    spec:
+      containers:
+        - name: backend
+          image: helpdesk-backend:latest
+          imagePullPolicy: IfNotPresent   # la imagen se construye dentro de Minikube
+          ports: [{ containerPort: 5000 }]
+          envFrom:
+            - configMapRef: { name: helpdesk-config }
+            - secretRef: { name: helpdesk-secrets }
+          # readiness: el pod recibe tráfico solo cuando /health (API + BD) responde
+          readinessProbe:
+            httpGet: { path: /health, port: 5000 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          # liveness: si deja de responder, Kubernetes reinicia el contenedor
+          livenessProbe:
+            httpGet: { path: /health, port: 5000 }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 3
+          # requests/limits: el HPA calcula el % de CPU sobre "requests"
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 384Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend                   # mismo nombre que usa nginx.conf (http://backend:5000)
+  namespace: helpdesk
+  labels: { app: backend }
+spec:
+  selector: { app: backend }
+  ports: [{ port: 5000, targetPort: 5000 }]

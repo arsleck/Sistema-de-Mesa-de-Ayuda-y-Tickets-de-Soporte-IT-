@@ -1,0 +1,29 @@
+# ConfigMap = configuración NO sensible · Secret = datos sensibles (contraseñas, claves)
+# Los Secret de este archivo son de DEMOSTRACIÓN: en producción se crean con
+#   kubectl create secret generic helpdesk-secrets --from-literal=...
+# o con un gestor de secretos (Azure Key Vault), nunca subidos a Git.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: helpdesk-config
+  namespace: helpdesk
+data:
+  POSTGRES_DB: mesa_ayuda_it
+  POSTGRES_USER: helpdesk
+  CORS_ORIGINS: http://localhost:8081
+  TRUST_PROXY: "1"
+  RATELIMIT_STORAGE_URI: redis://redis:6379/0
+  ADMIN_USERNAME: admin_soporte
+  ADMIN_EMAIL: admin@helpdesk.local
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: helpdesk-secrets
+  namespace: helpdesk
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: helpdesk_pass
+  JWT_SECRET_KEY: clave-de-demostracion-k8s-cambiar-en-produccion-2026
+  ADMIN_PASSWORD: super_secreta_123
+  DATABASE_URL: postgresql://helpdesk:helpdesk_pass@postgres:5432/mesa_ayuda_it
