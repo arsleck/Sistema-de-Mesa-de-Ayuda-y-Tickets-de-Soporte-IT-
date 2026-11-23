@@ -92,6 +92,8 @@ spec:
             - { name: GF_SECURITY_ADMIN_USER, value: admin }
             - { name: GF_SECURITY_ADMIN_PASSWORD, value: admin }
             - { name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH, value: /var/lib/grafana/dashboards/helpdesk.json }
+            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "true" }      # lectura sin login (rol Viewer)
+            - { name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: Viewer }
           resources:
             requests: { cpu: 50m, memory: 128Mi }
             limits: { cpu: 500m, memory: 512Mi }
