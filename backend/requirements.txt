@@ -26,3 +26,4 @@ nh3==0.3.8
 prometheus_client==0.26.0
 prometheus-flask-exporter==0.23.2
 gunicorn==27.0.1
+redis==8.2.0

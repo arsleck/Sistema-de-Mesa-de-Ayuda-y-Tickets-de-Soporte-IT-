@@ -28,6 +28,17 @@ services:
       timeout: 5s
       retries: 10
 
+  # ---------------------------------------------------------- Caché compartida
+  # Redis guarda los contadores del límite de intentos de login para que TODAS
+  # las réplicas del backend compartan el mismo conteo (ver docs/adr/0007)
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
   # ---------------------------------------------------------- API Flask
   backend:
     build:
@@ -38,11 +49,14 @@ services:
     depends_on:
       db:
         condition: service_healthy             # espera a que PostgreSQL esté listo
+      redis:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-helpdesk}:${POSTGRES_PASSWORD:-helpdesk_pass}@db:5432/${POSTGRES_DB:-mesa_ayuda_it}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-cambia-esta-clave-larga-de-produccion-en-el-archivo-env}
       CORS_ORIGINS: http://localhost:8080
       TRUST_PROXY: "1"                         # viene detrás de Nginx
+      RATELIMIT_STORAGE_URI: redis://redis:6379/0
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin_soporte}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-super_secreta_123}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@helpdesk.local}
