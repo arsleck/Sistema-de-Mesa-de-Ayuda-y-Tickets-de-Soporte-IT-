@@ -9,6 +9,9 @@
 # =====================================================================
 param([switch]$SkipBuild)
 $ErrorActionPreference = "Stop"
+# PowerShell 5.1 cambia la codificación del texto que pasa entre comandos con "|":
+# sin esto, las tildes del dashboard y de las alertas llegan como "??" al clúster
+$OutputEncoding = [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
 $ns = "helpdesk"
 
 function Paso($texto) { Write-Host "`n==> $texto" -ForegroundColor Cyan }
@@ -44,6 +47,8 @@ Paso "5/6 Desplegando base de datos, Redis, backend (+HPA), frontend y monitoreo
 kubectl apply -f k8s/
 # Si las imágenes se reconstruyeron con la misma etiqueta, se reinician los pods para usarlas
 if (-not $SkipBuild) { kubectl rollout restart deployment/backend deployment/frontend -n $ns }
+# Prometheus y Grafana releen sus ConfigMaps (dashboard y alertas) al reiniciar
+kubectl rollout restart deployment/prometheus deployment/grafana -n $ns
 
 Paso "6/6 Esperando a que todo esté listo"
 foreach ($d in "postgres", "redis", "backend", "frontend", "prometheus", "grafana") {

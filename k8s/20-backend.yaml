@@ -20,6 +20,15 @@ spec:
         prometheus.io/port: "5000"
         prometheus.io/path: /metrics
     spec:
+      # initContainer: espera a que PostgreSQL acepte conexiones ANTES de arrancar la API
+      # (evita reinicios del backend en el primer despliegue)
+      initContainers:
+        - name: esperar-postgres
+          image: postgres:16-alpine
+          command: ["sh", "-c", "until pg_isready -h postgres -p 5432; do echo 'esperando a PostgreSQL...'; sleep 2; done"]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
       containers:
         - name: backend
           image: helpdesk-backend:latest
