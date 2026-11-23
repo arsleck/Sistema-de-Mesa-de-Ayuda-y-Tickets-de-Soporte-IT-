@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Users, LogOut, ClipboardCheck, PlusCircle, Search, Ticket as TicketIcon, Trash2, UserCircle, Briefcase } from 'lucide-react';
 import api, { logoutSession } from '../api/axiosConfig';
@@ -16,30 +16,39 @@ function Tickets() {
     const currentUsername = localStorage.getItem('username') || 'Usuario';
     const currentUserRole = localStorage.getItem('role') || 'employee';
 
-    useEffect(() => {
-        fetchTickets();
-        if (currentUserRole !== 'employee') {
-            fetchAgents();
-        }
-    }, [currentUserRole]);
+    // Cierra la sesión en el servidor (revoca el JWT) y vuelve al login
+    const handleLogout = useCallback(async () => {
+        await logoutSession();
+        navigate('/login');
+    }, [navigate]);
 
-    const fetchTickets = async () => {
+    // useCallback: las funciones se declaran antes del useEffect que las usa (regla de React Hooks)
+    const fetchTickets = useCallback(async () => {
         try {
             const response = await api.get('/tickets');
             setTickets(response.data);
         } catch (error) {
             if (error.response?.status === 401) handleLogout();
         }
-    };
+    }, [handleLogout]);
 
-    const fetchAgents = async () => {
+    const fetchAgents = useCallback(async () => {
         try {
             const response = await api.get('/auth/agents');
             setAgents(response.data);
-        } catch (error) {
+        } catch {
             console.error("Error al cargar agentes");
         }
-    };
+    }, []);
+
+    // Carga inicial de datos desde la API al abrir la página
+    useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- petición asíncrona a la API (patrón válido de carga de datos)
+        fetchTickets();
+        if (currentUserRole !== 'employee') {
+            fetchAgents();
+        }
+    }, [currentUserRole, fetchTickets, fetchAgents]);
 
     const handleCreateTicket = async (e) => {
         e.preventDefault();
@@ -47,7 +56,7 @@ function Tickets() {
             await api.post('/tickets', { title, description, priority });
             setTitle(''); setDescription(''); setPriority('Media');
             fetchTickets();
-        } catch (error) {
+        } catch {
             alert("Error al crear el ticket.");
         }
     };
@@ -56,7 +65,7 @@ function Tickets() {
         try {
             await api.put(`/tickets/${id}`, { status: newStatus });
             fetchTickets();
-        } catch (error) {
+        } catch {
             alert("Error al actualizar estado.");
         }
     };
@@ -66,17 +75,12 @@ function Tickets() {
             try {
                 await api.delete(`/tickets/${id}`);
                 fetchTickets(); 
-            } catch (error) {
+            } catch {
                 alert("Error al eliminar.");
             }
         }
     };
 
-    // Cierra la sesión en el servidor (revoca el JWT) y vuelve al login
-    const handleLogout = async () => {
-        await logoutSession();
-        navigate('/login');
-    };
 
     const filteredTickets = tickets.filter(ticket => {
         const matchesSearch = ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -248,7 +252,7 @@ function Tickets() {
                                                             try {
                                                                 await api.put(`/tickets/${ticket.id}`, { assigned_to_id: e.target.value || null });
                                                                 fetchTickets();
-                                                            } catch (error) { alert("Error"); }
+                                                            } catch { alert("Error"); }
                                                         }}
                                                         className="clean-select assign"
                                                     >
