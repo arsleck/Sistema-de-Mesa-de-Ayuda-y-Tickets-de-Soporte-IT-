@@ -2,687 +2,226 @@
 
 ## Sistema de Mesa de Ayuda y Tickets de Soporte IT
 
-HelpDesk Pro es una plataforma web Full Stack desarrollada para centralizar la gestión, seguimiento y atención de solicitudes e incidencias de soporte tecnológico en entornos corporativos y académicos.
+[![CI/CD](https://github.com/arsleck/Sistema-de-Mesa-de-Ayuda-y-Tickets-de-Soporte-IT-/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/arsleck/Sistema-de-Mesa-de-Ayuda-y-Tickets-de-Soporte-IT-/actions/workflows/ci-cd.yml)
 
-El sistema permite a los usuarios registrar solicitudes de soporte mediante tickets, consultar su estado y realizar seguimiento de los reportes generados. Los técnicos y administradores cuentan con permisos adicionales para gestionar el estado de las incidencias y asignar responsables para su resolución.
+HelpDesk Pro es una plataforma web Full Stack para centralizar la gestión, seguimiento y atención de solicitudes e incidencias de soporte tecnológico en entornos corporativos y académicos.
 
-La plataforma implementa un esquema de **Control de Acceso Basado en Roles (RBAC)**, diferenciando las funcionalidades disponibles para empleados, técnicos y administradores. La comunicación entre el frontend y backend se realiza mediante una API REST utilizando JSON y autenticación mediante tokens JWT.
+Los usuarios registran tickets y consultan su estado; los técnicos y administradores gestionan estados, asignan responsables y supervisan el cumplimiento del **SLA**. El sistema aplica **RBAC** en el backend, autenticación **JWT (modelo OAuth 2.1)**, mitigaciones del **OWASP Top 10 2023**, y se despliega con **Docker**, **Kubernetes**, **GitHub Actions** y **Terraform**, con monitorización en **Prometheus + Grafana**.
 
-El proyecto utiliza **React y Vite** para el frontend, **Python y Flask** para el backend y **PostgreSQL con SQLAlchemy** para la persistencia de datos.
+> Proyecto de la asignatura **Ingeniería Web II**. El cumplimiento de cada actividad del curso está en [`docs/ANALISIS_REQUISITOS.md`](docs/ANALISIS_REQUISITOS.md) y las razones de cada herramienta en [`docs/adr/`](docs/adr/README.md).
 
-Actualmente, HelpDesk Pro se encuentra en desarrollo, con las funcionalidades principales de autenticación, gestión de tickets, asignación de responsables, prioridades, estados, filtros y dashboard implementadas. Se contempla ampliar el sistema en futuras versiones con notificaciones, webhooks, logging estructurado, comentarios, archivos adjuntos, estadísticas avanzadas y una administración visual más completa.
+![Dashboard con aviso de SLA](docs/img/dashboard_sla.png)
+
+---
+
+# Índice de documentación
+
+| Documento | Contenido | Actividad |
+|---|---|---|
+| [ANALISIS_REQUISITOS.md](docs/ANALISIS_REQUISITOS.md) | Estado inicial vs. final de cada requisito | Todas |
+| [DEMO.md](docs/DEMO.md) | **Guion paso a paso para la sustentación** | Todas |
+| [openapi.yaml](docs/openapi.yaml) · Swagger UI en `/api/docs` | Especificación OpenAPI 3.0 | A1, A4 |
+| [postman/](docs/postman/) | Colección Postman con 26 peticiones y pruebas automáticas | A1, A4 |
+| [PRUEBAS.md](docs/PRUEBAS.md) | pytest, Postman y Centro de verificación | A2, A4 |
+| [seguridad/SEGURIDAD.md](docs/seguridad/SEGURIDAD.md) | JWT/OAuth 2.1 y OWASP con evidencia antes/después | A3 |
+| [DOCKER_Y_MONITOREO.md](docs/DOCKER_Y_MONITOREO.md) | Dockerfiles, variables de entorno, Prometheus y Grafana | A5, A8 |
+| [KUBERNETES_Y_CICD.md](docs/KUBERNETES_Y_CICD.md) | Minikube, HPA, GitFlow y pipeline CI/CD | A6, A7, A8 |
+| [terraform/README.md](terraform/README.md) | Infraestructura como código en Azure (en inglés) | A7 |
+| [adr/](docs/adr/README.md) | 11 decisiones de arquitectura justificadas | Todas |
 
 ---
 
 # Características principales
 
 ## Gestión de usuarios
-
-- Registro de usuarios.
-- Registro de técnicos.
-- Inicio de sesión.
-- Cierre de sesión.
-- Autenticación mediante JWT.
-- Control de acceso basado en roles.
-- Diferenciación entre empleados, técnicos y administradores.
-- El administrador se configura actualmente mediante un proceso no visual.
-- Los usuarios no pueden eliminar sus cuentas desde la plataforma.
+- Registro público (siempre con rol `employee`), inicio y cierre de sesión.
+- El administrador crea técnicos desde el **Panel Admin**; el admin inicial se crea con variables de entorno.
+- JWT de acceso (30 min) + refresh token (7 días) con **renovación automática** y **revocación en el logout**.
 
 ## Gestión de tickets
+- Crear, consultar, filtrar y buscar tickets (asunto, detalle, prioridad, estado, creador, técnico asignado).
+- Técnicos y administradores cambian el estado, asignan responsables y eliminan.
+- El creador puede corregir su ticket mientras está **Abierto**.
+- **Historial de cambios (auditoría):** quién cambió qué y cuándo, en una línea de tiempo.
 
-Los usuarios autenticados pueden crear y consultar tickets de soporte.
+![Historial de cambios](docs/img/historial_ticket.png)
 
-Cada ticket contiene:
+## Dashboard y SLA
+- Totales por estado para el staff y aviso de **tickets de prioridad Alta sin técnico asignado**.
+- Tiempo promedio de resolución (`/api/tickets/stats`) y su histograma en Grafana.
 
-- Asunto.
-- Detalle del problema.
-- Prioridad.
-- Estado.
-- Fecha de creación.
-- Usuario que creó el ticket.
-- Técnico asignado.
+## Centro de verificación
+Página `/verificacion` (staff) que ejecuta en secuencia **11 pruebas en vivo** contra el backend real, una por requisito del curso, con código HTTP, tiempo y evidencia.
 
-Los técnicos y administradores cuentan con permisos adicionales para:
+![Centro de verificación](docs/img/centro_verificacion.png)
 
-- Consultar tickets.
-- Cambiar el estado de las incidencias.
-- Asignar o modificar el técnico responsable.
-
-Actualmente los tickets no pueden editarse después de su creación.
-
-## Estados de los tickets
-
-El sistema contempla los siguientes estados:
-
-| Estado | Descripción |
-|---|---|
-| `Abierto` | Ticket registrado y pendiente de atención. |
-| `En Progreso` | La incidencia se encuentra siendo atendida. |
-| `Resuelto` | La atención de la incidencia ha finalizado. |
-
-## Prioridades
-
-Los tickets pueden clasificarse según tres niveles de prioridad:
-
-| Prioridad | Descripción |
-|---|---|
-| `Baja` | Incidencia de bajo impacto. |
-| `Media` | Incidencia que requiere atención normal. |
-| `Alta` | Incidencia que requiere atención prioritaria. |
-
-## Filtrado
-
-La plataforma permite filtrar los tickets para facilitar la consulta y seguimiento de las incidencias registradas.
-
-## Dashboard
-
-El sistema cuenta con un dashboard para visualizar información general relacionada con los tickets.
-
-Actualmente esta sección se encuentra en proceso de ampliación y se contempla incorporar estadísticas adicionales en próximas versiones.
+| Estado | Descripción | | Prioridad | Descripción |
+|---|---|---|---|---|
+| `Abierto` | Pendiente de atención | | `Baja` | Bajo impacto |
+| `En Progreso` | En atención | | `Media` | Atención normal |
+| `Resuelto` | Atención finalizada | | `Alta` | Atención prioritaria (SLA) |
 
 ---
 
-# Roles y permisos
+# Roles y permisos (RBAC)
 
-HelpDesk Pro utiliza **RBAC (Role-Based Access Control)** para determinar las acciones que cada tipo de usuario puede realizar dentro de la plataforma.
+Los permisos se validan **en el backend** con el decorador `@roles_required` (`backend/app/utils/auth_helpers.py`).
 
 | Funcionalidad | Employee | Agent | Admin |
 |---|:---:|:---:|:---:|
-| Registrarse | Sí | Según configuración | Según configuración |
-| Iniciar sesión | Sí | Sí | Sí |
-| Cerrar sesión | Sí | Sí | Sí |
+| Registrarse / iniciar y cerrar sesión | Sí | Sí | Sí |
 | Crear tickets | Sí | Sí | Sí |
-| Consultar tickets | Propios | Gestión de tickets | Gestión de tickets |
-| Cambiar estado | No | Sí | Sí |
-| Asignar técnico | No | Sí | Sí |
-| Filtrar tickets | Sí | Sí | Sí |
-| Dashboard | Sí | Sí | Sí |
-| Gestión administrativa | No | No | Parcial |
-
-Los permisos se validan en el backend de acuerdo con el rol asociado a cada usuario.
+| Consultar tickets | Solo propios | Todos | Todos |
+| Editar asunto/detalle (mientras esté Abierto) | Propios | Sí | Sí |
+| Cambiar estado / asignar técnico / eliminar | No | Sí | Sí |
+| Ver historial | Propios | Todos | Todos |
+| Centro de verificación y Monitoreo | No | Sí | Sí |
+| Crear técnicos / listar usuarios | No | No | Sí |
 
 ---
 
-# Arquitectura del sistema
-
-El proyecto utiliza una arquitectura desacoplada basada en una aplicación web frontend y una API REST backend.
+# Arquitectura
 
 ```text
-┌──────────────────────────────────────┐
-│          Cliente / Navegador         │
-│                                      │
-│          React + Vite                │
-│          React Router DOM            │
-│          Axios                       │
-└──────────────────┬───────────────────┘
-                   │
-                   │ HTTP / JSON
-                   │ JWT
-                   ▼
-┌──────────────────────────────────────┐
-│           Backend Flask              │
-│                                      │
-│          API REST                    │
-│          JWT Authentication          │
-│          RBAC                        │
-│          SQLAlchemy                  │
-└──────────────────┬───────────────────┘
-                   │
-                   │ SQL
-                   ▼
-┌──────────────────────────────────────┐
-│             PostgreSQL               │
-│                                      │
-│             users                    │
-│             tickets                  │
-└──────────────────────────────────────┘
+                         Navegador (React + Vite)
+                                   │ HTTPS / JSON + JWT
+                   ┌───────────────▼────────────────┐
+                   │ Nginx (frontend)               │ sirve la SPA y reenvía /api
+                   └───────────────┬────────────────┘
+                                   │
+                   ┌───────────────▼────────────────┐  /metrics   ┌────────────┐   ┌─────────┐
+                   │ Flask API (Gunicorn) × N pods  │◄────────────│ Prometheus │──►│ Grafana │
+                   │ JWT · RBAC · OWASP · SLA       │             └────────────┘   └─────────┘
+                   └───────┬────────────────┬───────┘
+                           │ SQLAlchemy     │ rate limit compartido
+                   ┌───────▼──────┐  ┌──────▼──────┐
+                   │ PostgreSQL   │  │ Redis       │
+                   └──────────────┘  └─────────────┘
 ```
 
-### Flujo de comunicación
+El mismo par de imágenes Docker se ejecuta en **Docker Compose** (local), **Kubernetes/Minikube** (HPA 2–6 réplicas) y **Azure Container Apps** (Terraform).
 
-1. El usuario interactúa con la aplicación React.
-2. React realiza solicitudes HTTP mediante Axios.
-3. Las solicitudes protegidas incluyen el token JWT.
-4. Flask recibe y valida las solicitudes.
-5. El backend verifica la autenticación y los permisos correspondientes.
-6. SQLAlchemy gestiona las operaciones sobre PostgreSQL.
-7. El backend devuelve la información al frontend mediante respuestas JSON.
+## Modelo de datos (PostgreSQL, base `mesa_ayuda_it`)
+
+| Tabla | Campos principales |
+|---|---|
+| `users` | `id`, `username`, `email`, `password_hash` (bcrypt), `role` (`employee` / `agent` / `admin`) |
+| `tickets` | `id`, `title`, `description`, `status`, `priority`, `created_at`, `created_by_id` → users, `assigned_to_id` → users |
+| `ticket_history` | `id`, `ticket_id` → tickets, `user_id` → users, `field`, `old_value`, `new_value`, `created_at` |
+| `token_blocklist` | `id`, `jti` (tokens revocados en el logout), `created_at` |
 
 ---
 
-# Diagrama de componentes
+# API REST
 
-El siguiente diagrama puede generarse utilizando PlantUML:
+Documentación interactiva en **`/api/docs`** (Swagger UI) y especificación en [`docs/openapi.yaml`](docs/openapi.yaml).
 
-```plantuml
-@startuml
-
-skinparam backgroundColor #FFFFFF
-skinparam nodeStyle rectangle
-
-node "Cliente (Navegador Web)" {
-    [React SPA (Vite)]
-    [React Router DOM]
-    [Axios]
-}
-
-node "Servidor Backend" {
-    [Flask API]
-    [JWT Authentication]
-    [RBAC]
-    [SQLAlchemy ORM]
-}
-
-database "PostgreSQL" {
-    [users]
-    [tickets]
-}
-
-[React SPA (Vite)] --> [React Router DOM] : Navegación
-[React SPA (Vite)] --> [Axios] : Solicitudes HTTP
-[Axios] --> [Flask API] : HTTP / JSON
-[Flask API] --> [JWT Authentication] : Validación JWT
-[Flask API] --> [RBAC] : Validación de roles
-[Flask API] --> [SQLAlchemy ORM] : Consultas
-[SQLAlchemy ORM] --> [users] : Usuarios
-[SQLAlchemy ORM] --> [tickets] : Tickets
-
-@enduml
-```
-
----
-
-# Modelo de datos
-
-Actualmente el sistema utiliza PostgreSQL como sistema gestor de base de datos y SQLAlchemy como ORM.
-
-La base de datos principal se denomina:
-
-```text
-mesa_ayuda_it
-```
-
-## Tabla `users`
-
-Almacena la información de los usuarios registrados.
-
-| Campo | Tipo | Descripción |
+| Método | Ruta | Descripción |
 |---|---|---|
-| `id` | Integer | Identificador único |
-| `username` | String | Nombre de usuario |
-| `email` | String | Correo electrónico |
-| `password_hash` | String | Contraseña almacenada mediante hash |
-| `role` | String | Rol del usuario |
+| GET | `/health` | Estado de la API, la BD, el almacén del rate limit y el pod que respondió |
+| GET | `/metrics` | Métricas para Prometheus |
+| POST | `/api/auth/register` · `/login` · `/refresh` · `/logout` | Autenticación |
+| GET | `/api/auth/me` · `/agents` · `/users` | Perfil, técnicos (staff) y usuarios (admin) |
+| POST | `/api/auth/admin/register` | Crear técnico (admin) |
+| GET · POST | `/api/tickets` | Listar (filtros `status`, `priority`, `q`) y crear |
+| GET · PUT · DELETE | `/api/tickets/<id>` | Detalle, actualizar y eliminar |
+| GET | `/api/tickets/<id>/history` | Historial de cambios |
+| GET | `/api/tickets/stats` | Métricas del dashboard y SLA |
 
-Los roles disponibles son:
+---
 
-```text
-employee
-agent
-admin
+# Stack tecnológico
+
+| Capa | Tecnologías |
+|---|---|
+| Frontend | React 19, Vite, React Router DOM, Axios (interceptores JWT), Lucide React, Nginx |
+| Backend | Python, Flask, Flask-JWT-Extended, Flask-Limiter, Flask-CORS, bcrypt, nh3, Gunicorn |
+| Datos | PostgreSQL, SQLAlchemy (ORM), Redis |
+| Pruebas | pytest + pytest-html, Postman/Newman, Centro de verificación |
+| DevOps | Docker, Docker Compose, Kubernetes (Minikube), GitHub Actions, GHCR, Terraform (Azure) |
+| Observabilidad | Prometheus (métricas + alertas), Grafana (dashboard aprovisionado), logs JSON |
+
+---
+
+# Ejecución
+
+## Opción 1 · Docker Compose (recomendada)
+```powershell
+docker compose up -d --build
+```
+| Servicio | URL |
+|---|---|
+| Aplicación | http://localhost:8080 (`admin_soporte` / `super_secreta_123`) |
+| Swagger UI | http://localhost:8080/api/docs |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 (lectura sin login; edición con `admin` / `admin`) |
+
+## Opción 2 · Kubernetes (Minikube)
+```powershell
+minikube start --driver=docker --cpus=2 --memory=3072
+minikube addons enable metrics-server
+.\k8s\deploy.ps1
+.\k8s\port-forward.ps1      # App :8081 · Prometheus :9091 · Grafana :3001
 ```
 
-## Tabla `tickets`
+## Opción 3 · Desarrollo local
+```powershell
+copy .env.example .env      # ajustar DATABASE_URL y claves
 
-Almacena las solicitudes de soporte.
+cd backend
+python -m venv venv; venv\Scripts\activate
+pip install -r requirements-dev.txt
+python run.py               # http://127.0.0.1:5000
 
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `id` | Integer | Identificador del ticket |
-| `title` | String | Asunto del ticket |
-| `description` | Text | Detalle del problema |
-| `status` | String | Estado actual |
-| `priority` | String | Prioridad |
-| `created_at` | DateTime | Fecha de creación |
-| `created_by_id` | Integer | Usuario que creó el ticket |
-| `assigned_to_id` | Integer | Técnico asignado |
-
-### Relaciones
-
-La tabla `tickets` mantiene dos relaciones con `users`:
-
-```text
-users
-  │
-  ├── created_by_id ──> tickets
-  │
-  └── assigned_to_id ─> tickets
+cd ..\frontend
+npm install
+npm run dev                 # http://localhost:5173
 ```
 
-Esto permite identificar tanto al usuario que creó la incidencia como al técnico responsable de atenderla.
+## Pruebas
+```powershell
+cd backend; pytest                                   # 31 pruebas + reporte HTML en backend/reports/
+python security\evidencia_seguridad.py               # evidencia OWASP (con el backend encendido)
+npx newman run docs\postman\HelpDesk_Pro.postman_collection.json
+```
 
 ---
 
 # Estructura del proyecto
 
 ```text
-Sistema-de-Mesa-de-Ayuda-y-Tickets-de-Soporte-IT/
-│
+├── .github/workflows/ci-cd.yml   # Pipeline: test → build → deploy (kind y Azure)
 ├── backend/
-│   │
 │   ├── app/
-│   │   ├── models/
-│   │   │   ├── ticket.py       # Modelo de tickets
-│   │   │   └── user.py         # Modelo de usuarios
-│   │   │
-│   │   ├── routes/
-│   │   │   ├── auth.py         # Autenticación y usuarios
-│   │   │   ├── health.py       # Monitoreo del servicio
-│   │   │   ├── tickets.py      # Endpoints de tickets
-│   │   │   └── __init__.py
-│   │   │
-│   │   └── __init__.py         # Configuración de Flask
-│   │
-│   ├── .venv/                  # Entorno virtual
-│   ├── venv/                   # Entorno virtual
-│   ├── requirements.txt        # Dependencias Python
-│   ├── run.py                  # Punto de entrada del backend
-│   └── test_api.py             # Pruebas de la API
-│
-├── docs/
-│   └── openapi.yaml             # Documentación OpenAPI
-│
+│   │   ├── models/               # user, ticket, history (ORM)
+│   │   ├── routes/               # auth, tickets, health, docs (Swagger)
+│   │   ├── utils/auth_helpers.py # RBAC: @roles_required
+│   │   ├── security.py           # rate limit, cabeceras, saneamiento XSS, lista negra JWT
+│   │   ├── metrics.py            # /metrics, SLA y logs JSON
+│   │   └── seed.py               # administrador inicial
+│   ├── security/                 # evidencia OWASP y demo de SQL Injection
+│   ├── tests/                    # pytest (integración, RBAC, seguridad, métricas, SLA)
+│   └── Dockerfile
 ├── frontend/
-│   │
-│   ├── public/                  # Archivos públicos
-│   │
-│   ├── src/
-│   │   ├── api/
-│   │   │   └──                 # Configuración de Axios y JWT
-│   │   │
-│   │   ├── assets/              # Recursos gráficos
-│   │   │
-│   │   ├── pages/
-│   │   │   ├──                 # Vistas de la aplicación
-│   │   │   └──                 # Login, registro, tickets, etc.
-│   │   │
-│   │   ├── App.css              # Estilos principales
-│   │   ├── App.jsx              # Componente principal
-│   │   ├── index.css            # Estilos globales
-│   │   └── main.jsx             # Punto de entrada de React
-│   │
-│   ├── .gitignore
-│   ├── eslint.config.js
-│   ├── index.html
-│   ├── package.json              # Dependencias y scripts
-│   └── vite.config.js
-│
-└── README.md
-```
-
-> Las carpetas `venv`, `.venv` y `node_modules` corresponden a dependencias y entornos locales y no deben incluirse en el repositorio de código fuente.
-
----
-
-# Stack tecnológico
-
-## Frontend
-
-| Tecnología | Uso |
-|---|---|
-| React | Construcción de la interfaz |
-| Vite | Herramienta de desarrollo y compilación |
-| React Router DOM | Enrutamiento de la aplicación |
-| Axios | Comunicación con la API |
-| Lucide React | Iconografía |
-
-## Backend
-
-| Tecnología | Uso |
-|---|---|
-| Python | Lenguaje de programación |
-| Flask | Framework para la API REST |
-| Flask-JWT-Extended | Autenticación mediante JWT |
-| Flask-CORS | Comunicación entre frontend y backend |
-| Bcrypt | Protección de contraseñas |
-| SQLAlchemy | ORM para PostgreSQL |
-
-## Base de datos
-
-| Tecnología | Uso |
-|---|---|
-| PostgreSQL | Sistema gestor de base de datos |
-| SQLAlchemy | Mapeo objeto-relacional |
-
-## Documentación
-
-| Tecnología | Uso |
-|---|---|
-| OpenAPI | Documentación de la API REST |
-| PlantUML | Diagramas de arquitectura |
-
----
-
-# API REST
-
-El backend expone una API REST para permitir la comunicación entre el frontend y los servicios del sistema.
-
-## Health Check
-
-### GET `/health`
-
-Permite verificar el estado del servidor.
-
-Respuesta esperada:
-
-```json
-{
-  "status": "ok"
-}
-```
-
-## Autenticación
-
-Las rutas de autenticación se encuentran bajo:
-
-```text
-/api/auth
-```
-
-Entre las operaciones principales se encuentra el registro e inicio de sesión de usuarios.
-
-## Tickets
-
-Las rutas relacionadas con los tickets se encuentran bajo:
-
-```text
-/api/tickets
-```
-
-Las operaciones disponibles permiten consultar y gestionar las incidencias de soporte de acuerdo con los permisos del usuario autenticado.
-
-> La documentación OpenAPI del proyecto se encuentra actualmente en `docs/openapi.yaml` y continuará ampliándose conforme se incorporen y documenten nuevos endpoints.
-
----
-
-# Documentación OpenAPI
-
-El proyecto incluye una primera versión de la especificación OpenAPI:
-
-```text
-docs/openapi.yaml
-```
-
-Actualmente documenta el monitoreo del servicio y parte de las operaciones relacionadas con tickets.
-
-La documentación será ampliada en futuras versiones para incluir todos los endpoints de autenticación, usuarios y tickets, junto con sus parámetros, esquemas de respuesta, códigos HTTP y mecanismos de autenticación.
-
----
-
-# Instalación
-
-## Requisitos previos
-
-Para ejecutar el proyecto localmente se requiere:
-
-- Python 3.x
-- Node.js
-- npm
-- PostgreSQL
-- Git
-
----
-
-# Configuración de la base de datos
-
-Crear una base de datos PostgreSQL denominada:
-
-```sql
-CREATE DATABASE mesa_ayuda_it;
-```
-
-El backend utiliza PostgreSQL como sistema gestor de base de datos.
-
-Antes de iniciar la aplicación, debe configurarse correctamente la conexión a PostgreSQL en el backend.
-
-La aplicación utiliza SQLAlchemy para crear y gestionar las tablas correspondientes.
-
----
-
-# Ejecución del Backend
-
-Ingresar a la carpeta:
-
-```bash
-cd backend
-```
-
-Crear un entorno virtual:
-
-```bash
-python -m venv venv
-```
-
-### Windows
-
-```powershell
-venv\Scripts\activate
-```
-
-### Linux / macOS
-
-```bash
-source venv/bin/activate
-```
-
-Instalar las dependencias:
-
-```bash
-pip install -r requirements.txt
-```
-
-Ejecutar el servidor:
-
-```bash
-python run.py
-```
-
-El backend estará disponible en:
-
-```text
-http://127.0.0.1:5000
+│   ├── src/pages/                # Login, Register, Tickets, AdminPanel, Verificacion
+│   ├── src/components/           # TicketHistory
+│   ├── nginx.conf · Dockerfile
+├── monitoring/                   # Prometheus (config + alertas) y Grafana (dashboard)
+├── k8s/                          # Manifiestos de Kubernetes y scripts de despliegue
+├── terraform/                    # Infraestructura en Azure (en inglés)
+├── scripts/generar_carga.py      # Prueba de carga para la demo de escalabilidad
+├── docs/                         # Documentación, ADR, evidencias e imágenes
+└── docker-compose.yml
 ```
 
 ---
 
-# Ejecución del Frontend
+# Flujo de trabajo (GitFlow)
 
-Abrir una nueva terminal y acceder a:
+`feature/*` → Pull Request a `develop` (con CI en verde) → `release` → `main`. Los commits siguen *Conventional Commits* (`feat:`, `fix:`, `docs:`, `test:`, `ci:`).
 
-```bash
-cd frontend
-```
-
-Instalar las dependencias:
-
-```bash
-npm install
-```
-
-Ejecutar el servidor de desarrollo:
-
-```bash
-npm run dev
-```
-
-El frontend estará disponible normalmente en:
-
-```text
-http://localhost:5173
-```
-
----
-
-# Pruebas
-
-El backend incluye un archivo destinado a las pruebas de la API:
-
-```text
-backend/test_api.py
-```
-
-Este archivo permite realizar verificaciones sobre el funcionamiento de los servicios disponibles en el backend.
-
-Las pruebas pueden ampliarse para cubrir:
-
-- Registro de usuarios.
-- Inicio de sesión.
-- Autenticación JWT.
-- Creación de tickets.
-- Consulta de tickets.
-- Actualización de estados.
-- Asignación de técnicos.
-- Control de permisos.
-- Respuestas de la API.
-
----
-
-# Seguridad
-
-El sistema incorpora diferentes mecanismos relacionados con la seguridad:
-
-- Autenticación mediante JWT.
-- Control de acceso basado en roles.
-- Hashing de contraseñas mediante Bcrypt.
-- Protección de endpoints.
-- Separación de responsabilidades entre frontend y backend.
-- Validación de permisos según el rol del usuario.
-
-Para una versión de producción se recomienda trasladar las credenciales de conexión a PostgreSQL y las claves utilizadas para JWT a variables de entorno.
-
----
-
-# Funcionalidades pendientes
-
-El proyecto continúa en desarrollo. Las siguientes características están contempladas para próximas versiones:
-
-## Administración
-
-- Panel administrativo visual.
-- Gestión visual de administradores y técnicos.
-- Administración más completa de usuarios.
-- Gestión de permisos desde la interfaz.
-
-## Gestión de tickets
-
-- Edición de tickets.
-- Historial de cambios.
-- Comentarios dentro de los tickets.
-- Archivos adjuntos.
-- Mayor personalización de categorías y prioridades.
-
-## Notificaciones
-
-- Sistema de notificaciones para cambios en los tickets.
-- Integración mediante webhooks.
-- Notificaciones por correo electrónico.
-- Integración con Slack.
-
-## Dashboard
-
-- Estadísticas avanzadas.
-- Cantidad de tickets por estado.
-- Cantidad de tickets por prioridad.
-- Tickets por técnico.
-- Tiempo promedio de resolución.
-- Indicadores de rendimiento del servicio.
-
-## Observabilidad
-
-- Logging estructurado de incidencias.
-- Registro de eventos importantes.
-- Seguimiento de errores del backend.
-- Auditoría de acciones administrativas.
-
-## Documentación
-
-- Completar la especificación OpenAPI.
-- Documentar todos los endpoints.
-- Incorporar ejemplos de solicitudes y respuestas.
-- Documentar códigos de error y respuestas de autenticación.
-
----
-
-# Roadmap
-
-La evolución prevista del proyecto puede organizarse de la siguiente manera:
-
-```text
-Versión 1.0
-│
-├── Autenticación
-├── RBAC
-├── Gestión de tickets
-├── Estados
-├── Prioridades
-├── Asignación de técnicos
-├── Filtros
-└── Dashboard inicial
-        │
-        ▼
-Versión 1.1
-│
-├── Dashboard avanzado
-├── Edición de tickets
-├── Comentarios
-└── Archivos adjuntos
-        │
-        ▼
-Versión 1.2
-│
-├── Notificaciones
-├── Webhooks
-├── Correo electrónico
-└── Integración con Slack
-        │
-        ▼
-Versión 2.0
-│
-├── Logging estructurado
-├── Auditoría
-├── Estadísticas avanzadas
-├── Administración visual
-└── Documentación API completa
-```
-
----
-
-# Información académica
-
-**Proyecto:** HelpDesk Pro — Sistema de Mesa de Ayuda y Tickets de Soporte IT
-
-**Institución:** Universidad Manuela Beltrán
-
-**Programa:** Ingeniería de Software
-
-**Asignatura:** Ingeniería Web 2
-
-**Semestre:** Sexto semestre
-
-**Año:** 2026
-
----
-
-# Integrantes
-
-### Diego Nicolas Cuervo Ochoa
-
-### Andres Felipe Murcia Fuentes
-
----
-
-# Estado del proyecto
-
-**Estado actual:** En desarrollo.
-
-HelpDesk Pro cuenta actualmente con una base funcional para la gestión de solicitudes de soporte IT, incluyendo autenticación, control de acceso por roles, creación y consulta de tickets, asignación de técnicos, gestión de estados y prioridades, filtros y un dashboard inicial.
-
-El proyecto se encuentra en proceso de evolución hacia una plataforma de mesa de ayuda más completa, incorporando progresivamente funcionalidades de notificación, observabilidad, administración, colaboración y análisis de información.
-
----
-
-# Licencia
-
-Este proyecto fue desarrollado con fines académicos para la Universidad Manuela Beltrán.
-
-© 2026 — HelpDesk Pro
+# Trabajo futuro
+- Notificaciones por correo/Slack (webhooks) al cambiar un ticket.
+- Comentarios y archivos adjuntos en los tickets.
+- Migraciones de esquema con Flask-Migrate (Alembic).
+- Despliegue productivo en Azure activando `AZURE_DEPLOY` en el pipeline.

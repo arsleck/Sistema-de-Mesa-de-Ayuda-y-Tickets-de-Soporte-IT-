@@ -14,3 +14,4 @@ Cada documento explica **qué** se decidió, **por qué** y **qué alternativas 
 | [0008](0008-kubernetes-minikube-con-probes-y-autoe.md) | Kubernetes (Minikube) con probes y autoescalado HPA | A6, A8 |
 | [0009](0009-gitflow-github-actions-para-ci-cd.md) | GitFlow + GitHub Actions para CI/CD | A6, A7 |
 | [0010](0010-terraform-azure-container-apps-para-la.md) | Terraform + Azure Container Apps para la nube | A7, A8 |
+| [0011](0011-historial-de-cambios-y-sla.md) | Historial de cambios (auditoría) y métricas de SLA | A2, A8 |
