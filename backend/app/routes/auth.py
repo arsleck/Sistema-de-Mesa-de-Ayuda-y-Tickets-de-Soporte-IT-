@@ -3,7 +3,9 @@ Endpoints de autenticación y usuarios  (prefijo /api/auth)
 
 - POST /register        -> registro público (siempre crea 'employee')
 - POST /admin/register  -> solo el admin crea técnicos ('agent')
-- POST /login           -> valida credenciales y entrega el JWT
+- POST /login           -> valida credenciales y entrega access + refresh token
+- POST /refresh         -> entrega un access token nuevo usando el refresh token
+- POST /logout          -> revoca el token actual (queda en la lista negra)
 - GET  /me              -> datos del usuario dueño del token
 - GET  /agents          -> técnicos disponibles para asignar (solo staff)
 - GET  /users           -> listado de usuarios (solo admin)
@@ -12,8 +14,10 @@ from flask import Blueprint, request, jsonify
 from app import db
 from app.models.user import User
 import bcrypt
-from flask_jwt_extended import create_access_token, jwt_required
+from flask_jwt_extended import (create_access_token, create_refresh_token, get_jwt,
+                                get_jwt_identity, jwt_required)
 
+from app.security import TokenBlocklist, limiter, sanitize_text
 from app.utils.auth_helpers import get_current_user, roles_required, STAFF_ROLES
 
 auth_bp = Blueprint('auth', __name__)
@@ -30,6 +34,8 @@ def _validate_user_payload(data):
         return "Faltan datos obligatorios"
     if len(data['username']) > 80 or len(data['email']) > 120:
         return "Usuario o correo demasiado largo"
+    if sanitize_text(data['username']) != data['username']:
+        return "El nombre de usuario no puede contener HTML"
     if '@' not in data['email']:
         return "Correo electrónico inválido"
     if len(data['password']) < 6:
@@ -90,8 +96,9 @@ def register_agent():
     return jsonify({"message": "Técnico creado exitosamente", "user": new_agent.to_dict()}), 201
 
 
-# 3. LOGIN (Devuelve el token y el rol)
+# 3. LOGIN (Devuelve los tokens y el rol)
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit("5 per minute")  # Máximo 5 intentos por minuto por IP: frena ataques de fuerza bruta
 def login():
     data = request.get_json(silent=True)
     if not data or not data.get('username') or not data.get('password'):
@@ -105,13 +112,35 @@ def login():
 
     # El "identity" del token es el id del usuario; el rol viaja como dato adicional
     access_token = create_access_token(identity=str(user.id), additional_claims={"role": user.role})
+    refresh_token = create_refresh_token(identity=str(user.id))  # sirve solo para renovar la sesión
 
     return jsonify({
         "message": "Inicio de sesión exitoso",
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "username": user.username,
         "role": user.role  # Enviamos el rol al frontend
     }), 200
+
+
+# 3.1 RENOVAR SESIÓN: con el refresh token se obtiene un access token nuevo
+@auth_bp.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Usuario no encontrado"}), 404
+    new_token = create_access_token(identity=get_jwt_identity(), additional_claims={"role": user.role})
+    return jsonify({"access_token": new_token}), 200
+
+
+# 3.2 LOGOUT: el token se agrega a la lista negra y ya no se puede volver a usar
+@auth_bp.route('/logout', methods=['POST'])
+@jwt_required(verify_type=False)  # acepta access o refresh token
+def logout():
+    db.session.add(TokenBlocklist(jti=get_jwt()['jti']))
+    db.session.commit()
+    return jsonify({"message": "Sesión cerrada y token revocado"}), 200
 
 
 # 4. PERFIL DEL USUARIO AUTENTICADO
