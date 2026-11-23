@@ -86,3 +86,5 @@ El estado final de cada requisito se actualiza en la sección 3 al cierre de cad
 | JWT con modelo OAuth 2.1 (refresh + revocación) | ✅ | `/api/auth/refresh`, `/api/auth/logout`, tabla `token_blocklist` |
 | SQLi, XSS y CSRF mitigados con evidencia antes/después | ✅ | `docs/seguridad/` — 2/14 → 14/14 controles |
 | Límite de intentos y cabeceras de seguridad | ✅ | `backend/app/security.py` |
+| Mínimo 3 pruebas de integración + reporte | ✅ | `backend/tests/` (25 pruebas) → `backend/reports/reporte_pruebas.html` |
+| Verificación visual de requisitos | ✅ | Frontend `/verificacion` — `docs/PRUEBAS.md` |
