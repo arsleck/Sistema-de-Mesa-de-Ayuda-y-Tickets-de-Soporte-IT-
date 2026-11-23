@@ -88,3 +88,6 @@ El estado final de cada requisito se actualiza en la sección 3 al cierre de cad
 | Límite de intentos y cabeceras de seguridad | ✅ | `backend/app/security.py` |
 | Mínimo 3 pruebas de integración + reporte | ✅ | `backend/tests/` (25 pruebas) → `backend/reports/reporte_pruebas.html` |
 | Verificación visual de requisitos | ✅ | Frontend `/verificacion` — `docs/PRUEBAS.md` |
+| Dockerfile backend/frontend + Docker Compose con BD | ✅ | `backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml` |
+| Documentación de Dockerfile y variables de entorno | ✅ | `docs/DOCKER_Y_MONITOREO.md` |
+| Prometheus + Grafana (métricas, alertas, dashboard) | ✅ | `monitoring/`, endpoint `/metrics`, logs JSON |

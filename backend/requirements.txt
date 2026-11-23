@@ -23,3 +23,6 @@ Werkzeug==3.1.8
 Flask-Limiter==4.1.1
 limits==5.8.0
 nh3==0.3.8
+prometheus_client==0.26.0
+prometheus-flask-exporter==0.23.2
+gunicorn==27.0.1

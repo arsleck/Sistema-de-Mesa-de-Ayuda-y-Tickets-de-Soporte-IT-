@@ -37,10 +37,18 @@ def create_app(test_config=None):
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=int(os.getenv('JWT_ACCESS_MINUTES', 30)))
     app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=int(os.getenv('JWT_REFRESH_DAYS', 7)))
     app.config['RATELIMIT_ENABLED'] = os.getenv('RATELIMIT_ENABLED', '1') == '1'
+    # Dónde se guardan los contadores del límite de intentos (memory:// o redis://...)
+    app.config['RATELIMIT_STORAGE_URI'] = os.getenv('RATELIMIT_STORAGE_URI', 'memory://')
 
     # Permite que las pruebas automáticas sobrescriban la configuración
     if test_config:
         app.config.update(test_config)
+
+    # Detrás de Nginx/Kubernetes: usar la IP real del cliente (cabecera X-Forwarded-For),
+    # si no, el límite de intentos bloquearía a todos los usuarios a la vez
+    if os.getenv('TRUST_PROXY', '0') == '1':
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     # --- Extensiones ---
     db.init_app(app)
@@ -83,6 +91,10 @@ def create_app(test_config=None):
         # Crea el administrador inicial si viene definido en el entorno
         from app.seed import seed_admin
         seed_admin()
+
+    # Observabilidad: /metrics para Prometheus + logs en formato JSON
+    from app.metrics import init_metrics
+    init_metrics(app)
 
     register_error_handlers(app)
     return app

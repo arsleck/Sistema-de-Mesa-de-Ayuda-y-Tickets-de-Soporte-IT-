@@ -1,0 +1,14 @@
+# Archivos que NO se envían a Docker al construir (imágenes más livianas y sin secretos)
+**/node_modules
+**/venv
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/reports
+**/*.db
+**/dist
+.git
+.env
+.env.*
+k8s
+terraform

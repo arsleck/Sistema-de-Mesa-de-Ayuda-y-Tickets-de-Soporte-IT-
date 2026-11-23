@@ -1,0 +1,8 @@
+# Carga automáticamente los dashboards JSON de la carpeta /var/lib/grafana/dashboards
+apiVersion: 1
+providers:
+  - name: HelpDesk Pro
+    folder: HelpDesk Pro
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
