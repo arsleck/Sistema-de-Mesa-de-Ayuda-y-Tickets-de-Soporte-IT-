@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Users, LogOut, PlusCircle, Search, Ticket as TicketIcon, Trash2, UserCircle, Briefcase } from 'lucide-react';
-import api from '../api/axiosConfig';
+import api, { logoutSession } from '../api/axiosConfig';
 
 function Tickets() {
     const [tickets, setTickets] = useState([]);
@@ -72,8 +72,9 @@ function Tickets() {
         }
     };
 
-    const handleLogout = () => {
-        localStorage.clear();
+    // Cierra la sesión en el servidor (revoca el JWT) y vuelve al login
+    const handleLogout = async () => {
+        await logoutSession();
         navigate('/login');
     };
 

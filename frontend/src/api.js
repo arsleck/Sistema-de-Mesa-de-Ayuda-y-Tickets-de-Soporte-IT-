@@ -1,4 +1,6 @@
-const API_URL = "http://127.0.0.1:5000";
+import { API_BASE } from "./api/axiosConfig";
+
+const API_URL = API_BASE;
 
 export const checkHealth = async () => {
     try {

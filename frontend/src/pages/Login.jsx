@@ -16,11 +16,15 @@ function Login() {
         try {
             const response = await api.post('/auth/login', { username, password });
             localStorage.setItem('token', response.data.access_token);
+            localStorage.setItem('refresh_token', response.data.refresh_token); // para renovar la sesión
             localStorage.setItem('username', response.data.username);
             localStorage.setItem('role', response.data.role);
             navigate('/tickets');
         } catch (err) {
-            setError('Credenciales inválidas. Verifica tu usuario y contraseña.');
+            // 429 = el backend bloqueó temporalmente por demasiados intentos (anti fuerza bruta)
+            setError(err.response?.status === 429
+                ? 'Demasiados intentos fallidos. Espera un minuto e inténtalo de nuevo.'
+                : 'Credenciales inválidas. Verifica tu usuario y contraseña.');
         } finally {
             setLoading(false);
         }
