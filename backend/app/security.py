@@ -23,7 +23,8 @@ from flask_limiter.util import get_remote_address
 from app import db
 
 # Límite de peticiones por IP (se aplica con @limiter.limit en los endpoints sensibles)
-limiter = Limiter(key_func=get_remote_address, storage_uri="memory://", default_limits=[])
+# El almacenamiento se toma de la configuración RATELIMIT_STORAGE_URI (ver create_app)
+limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
 
 def sanitize_text(value):

@@ -18,6 +18,7 @@ from sqlalchemy import func, or_
 from app import db
 from app.models.ticket import Ticket, VALID_PRIORITIES, VALID_STATUSES
 from app.models.user import User
+from app.metrics import TICKETS_CREATED
 from app.security import sanitize_text
 from app.utils.auth_helpers import get_current_user, roles_required, STAFF_ROLES
 
@@ -64,6 +65,7 @@ def create_ticket():
 
     db.session.add(new_ticket)
     db.session.commit()
+    TICKETS_CREATED.labels(priority=priority).inc()  # métrica para Grafana
 
     return jsonify({"message": "Ticket creado exitosamente", "ticket": new_ticket.to_dict()}), 201
 

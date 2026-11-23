@@ -17,6 +17,7 @@ import bcrypt
 from flask_jwt_extended import (create_access_token, create_refresh_token, get_jwt,
                                 get_jwt_identity, jwt_required)
 
+from app.metrics import LOGIN_ATTEMPTS
 from app.security import TokenBlocklist, limiter, sanitize_text
 from app.utils.auth_helpers import get_current_user, roles_required, STAFF_ROLES
 
@@ -108,7 +109,10 @@ def login():
     user = User.query.filter_by(username=data['username']).first()
 
     if not user or not bcrypt.checkpw(data['password'].encode('utf-8'), user.password_hash.encode('utf-8')):
+        LOGIN_ATTEMPTS.labels(result='failed').inc()  # métrica para Grafana
         return jsonify({"error": "Credenciales inválidas"}), 401
+
+    LOGIN_ATTEMPTS.labels(result='success').inc()
 
     # El "identity" del token es el id del usuario; el rol viaja como dato adicional
     access_token = create_access_token(identity=str(user.id), additional_claims={"role": user.role})
