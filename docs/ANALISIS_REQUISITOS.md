@@ -91,3 +91,9 @@ El estado final de cada requisito se actualiza en la sección 3 al cierre de cad
 | Dockerfile backend/frontend + Docker Compose con BD | ✅ | `backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml` |
 | Documentación de Dockerfile y variables de entorno | ✅ | `docs/DOCKER_Y_MONITOREO.md` |
 | Prometheus + Grafana (métricas, alertas, dashboard) | ✅ | `monitoring/`, endpoint `/metrics`, logs JSON |
+| Kubernetes local (Minikube): pods, servicios, deployments | ✅ | `k8s/` (20 recursos) + `k8s/deploy.ps1` — HPA 2–6 réplicas, probes, PVC |
+| GitFlow con mínimo 10 commits documentados | ✅ | `main` / `develop` / `feature/*`, más de 30 commits con Conventional Commits y PRs |
+| CI/CD con GitHub Actions (build + test + deploy) | ✅ | `.github/workflows/ci-cd.yml` (6 jobs, deploy a kind y a Azure) |
+| Terraform (en inglés) | ✅ | `terraform/` — Azure Container Apps + PostgreSQL Flexible |
+| Escalabilidad compartida entre réplicas | ✅ | Redis para el límite de intentos (`docs/adr/0007`) |
+| Decisiones de arquitectura justificadas | ✅ | `docs/adr/` (10 ADR) |
