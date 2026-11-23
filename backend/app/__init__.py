@@ -57,7 +57,10 @@ def create_app(test_config=None):
 
     # CORS: solo los orígenes del frontend definidos pueden consumir la API
     allowed_origins = os.getenv('CORS_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
-    CORS(app, resources={r"/api/*": {"origins": allowed_origins}, r"/health": {"origins": "*"}})
+    # expose_headers: permite que el Centro de verificación (frontend) lea las cabeceras de seguridad
+    security_headers = ['Content-Security-Policy', 'X-Frame-Options', 'X-Content-Type-Options', 'Referrer-Policy']
+    CORS(app, resources={r"/api/*": {"origins": allowed_origins}, r"/health": {"origins": "*"}},
+         expose_headers=security_headers)
 
     with app.app_context():
         # Se importan los modelos para que SQLAlchemy cree sus tablas

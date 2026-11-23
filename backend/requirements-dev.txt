@@ -1,0 +1,9 @@
+# Dependencias solo para pruebas (no se instalan en producción)
+-r requirements.txt
+pytest==9.2.0
+pytest-html==4.2.0
+pytest-metadata==3.1.1
+iniconfig==2.3.1
+pluggy==1.7.0
+packaging==26.3
+Pygments==2.21.0

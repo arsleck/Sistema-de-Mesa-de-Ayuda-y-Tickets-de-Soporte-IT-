@@ -3,6 +3,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Tickets from './pages/Tickets';
 import AdminPanel from './pages/AdminPanel'; // <--- IMPORTACIÓN DEL NUEVO PANEL
+import Verificacion from './pages/Verificacion'; // Centro de verificación para la demostración
 import './App.css';
 
 function App() {
@@ -17,6 +18,9 @@ function App() {
         
         {/* NUEVA RUTA PARA EL ADMIN */}
         <Route path="/admin" element={<AdminPanel />} />
+
+        {/* Centro de verificación: prueba visual de cada requisito del curso (solo staff) */}
+        <Route path="/verificacion" element={<Verificacion />} />
       </Routes>
     </Router>
   );
