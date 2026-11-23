@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, LogOut, PlusCircle, Search, Ticket as TicketIcon, Trash2, UserCircle, Briefcase } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, ClipboardCheck, PlusCircle, Search, Ticket as TicketIcon, Trash2, UserCircle, Briefcase } from 'lucide-react';
 import api, { logoutSession } from '../api/axiosConfig';
 
 function Tickets() {
@@ -109,6 +109,11 @@ function Tickets() {
                     {currentUserRole === 'admin' && (
                         <button onClick={() => navigate('/admin')} className="nav-item">
                             <Users size={20} /> Gestión de Agentes
+                        </button>
+                    )}
+                    {currentUserRole !== 'employee' && (
+                        <button onClick={() => navigate('/verificacion')} className="nav-item">
+                            <ClipboardCheck size={20} /> Verificación
                         </button>
                     )}
                     <button onClick={handleLogout} className="nav-item logout">
