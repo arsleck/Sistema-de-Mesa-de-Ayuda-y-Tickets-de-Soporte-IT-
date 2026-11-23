@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 // URL del backend: en Docker/Kubernetes se define con VITE_API_URL; en local usa Flask directo
-export const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000';
+// '??' permite el valor vacío ("") que usa Docker: mismo dominio, Nginx reenvía /api al backend
+export const API_BASE = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
 // Creamos una instancia de axios con la URL de tu backend en Flask
 const api = axios.create({
