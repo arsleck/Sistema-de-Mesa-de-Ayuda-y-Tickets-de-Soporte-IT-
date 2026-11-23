@@ -7,6 +7,7 @@ los grupos de rutas (blueprints). Usar una fábrica permite crear una app
 "de pruebas" con SQLite en memoria sin tocar PostgreSQL.
 """
 import os
+from datetime import timedelta
 
 from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -32,6 +33,11 @@ def create_app(test_config=None):
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'clave-de-desarrollo-cambiar-en-produccion-2026')
     app.config['JSON_SORT_KEYS'] = False
 
+    # Tokens de vida corta + token de renovación (modelo OAuth 2.1: access + refresh)
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=int(os.getenv('JWT_ACCESS_MINUTES', 30)))
+    app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=int(os.getenv('JWT_REFRESH_DAYS', 7)))
+    app.config['RATELIMIT_ENABLED'] = os.getenv('RATELIMIT_ENABLED', '1') == '1'
+
     # Permite que las pruebas automáticas sobrescriban la configuración
     if test_config:
         app.config.update(test_config)
@@ -39,6 +45,15 @@ def create_app(test_config=None):
     # --- Extensiones ---
     db.init_app(app)
     jwt.init_app(app)
+
+    from app.security import limiter, add_security_headers, TokenBlocklist
+    limiter.init_app(app)                       # límite de intentos (fuerza bruta)
+    app.after_request(add_security_headers)     # cabeceras de seguridad en cada respuesta
+
+    @jwt.token_in_blocklist_loader
+    def is_token_revoked(jwt_header, jwt_payload):
+        # Un token revocado en el logout deja de servir aunque no haya expirado
+        return db.session.query(TokenBlocklist.id).filter_by(jti=jwt_payload['jti']).first() is not None
 
     # CORS: solo los orígenes del frontend definidos pueden consumir la API
     allowed_origins = os.getenv('CORS_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
@@ -84,6 +99,10 @@ def register_error_handlers(app):
     @app.errorhandler(405)
     def method_not_allowed(e):
         return jsonify({"error": "Método no permitido"}), 405
+
+    @app.errorhandler(429)
+    def too_many_requests(e):
+        return jsonify({"error": "Demasiados intentos. Espera un momento e inténtalo de nuevo."}), 429
 
     @app.errorhandler(500)
     def server_error(e):
