@@ -95,3 +95,9 @@ python scripts\generar_carga.py --url http://localhost:8081 --usuarios 40 --segu
 | ¿Qué pasa si cae la BD? | `/health` responde 503, la readiness probe saca al pod del balanceo y Grafana lo muestra. |
 | ¿Por qué Container Apps y no AKS? | Serverless, autoescalado HTTP y TLS incluidos, a menor costo (ADR 0010). |
 | ¿Cómo se mide el SLA? | Histograma de tiempo de resolución + alerta de urgentes sin asignar (ADR 0011). |
+
+## Demo guiada automatica
+
+- `.\scripts\demo_sustentacion.ps1` muestra los 12 pasos con pausa (Enter).
+- `-SinPausas` todo seguido, `-Desde 5` empieza en un paso, `-ConCarga` incluye la prueba de autoescalado.
+- Detecta solo Kubernetes (:8081), Docker (:8080) o local (:5000).
