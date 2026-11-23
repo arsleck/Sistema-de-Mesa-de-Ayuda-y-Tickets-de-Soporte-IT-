@@ -18,6 +18,7 @@ from sqlalchemy import func, or_
 from app import db
 from app.models.ticket import Ticket, VALID_PRIORITIES, VALID_STATUSES
 from app.models.user import User
+from app.security import sanitize_text
 from app.utils.auth_helpers import get_current_user, roles_required, STAFF_ROLES
 
 tickets_bp = Blueprint('tickets', __name__)
@@ -48,9 +49,15 @@ def create_ticket():
     if len(data['title']) > 100:
         return jsonify({"error": "El asunto no puede superar 100 caracteres"}), 400
 
+    # XSS: se elimina cualquier etiqueta HTML/JS antes de guardar en la base de datos
+    title = sanitize_text(data['title'])
+    description = sanitize_text(data['description'])
+    if not title or not description:
+        return jsonify({"error": "El asunto y el detalle deben contener texto válido"}), 400
+
     new_ticket = Ticket(
-        title=data['title'].strip(),
-        description=data['description'].strip(),
+        title=title,
+        description=description,
         priority=priority,
         created_by_id=user.id  # El creador siempre es el dueño del token, nunca lo envía el cliente
     )
@@ -176,7 +183,10 @@ def update_ticket(id):
         if field in data and data[field]:
             if field == 'title' and len(data[field]) > 100:
                 return jsonify({"error": "El asunto no puede superar 100 caracteres"}), 400
-            setattr(ticket, field, data[field].strip())
+            clean = sanitize_text(data[field])  # XSS: mismo saneamiento que al crear
+            if not clean:
+                return jsonify({"error": "El asunto y el detalle deben contener texto válido"}), 400
+            setattr(ticket, field, clean)
 
     db.session.commit()
 

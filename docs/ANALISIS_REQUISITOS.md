@@ -83,3 +83,6 @@ El estado final de cada requisito se actualiza en la sección 3 al cierre de cad
 | Swagger UI | ✅ | `http://127.0.0.1:5000/api/docs` |
 | Colección Postman con tests | ✅ | `docs/postman/HelpDesk_Pro.postman_collection.json` (22 peticiones, 27 aserciones) |
 | `/health` con chequeo de BD | ✅ | `http://127.0.0.1:5000/health` |
+| JWT con modelo OAuth 2.1 (refresh + revocación) | ✅ | `/api/auth/refresh`, `/api/auth/logout`, tabla `token_blocklist` |
+| SQLi, XSS y CSRF mitigados con evidencia antes/después | ✅ | `docs/seguridad/` — 2/14 → 14/14 controles |
+| Límite de intentos y cabeceras de seguridad | ✅ | `backend/app/security.py` |
