@@ -1,0 +1,112 @@
+# =====================================================================
+#  HelpDesk Pro – Docker Compose (Actividad 5 + monitorización Actividad 8)
+#
+#  docker compose up -d --build      -> levanta todo
+#  docker compose ps                 -> estado de los contenedores
+#  docker compose logs -f backend    -> logs del backend (JSON)
+#  docker compose down               -> apaga (agrega -v para borrar los datos)
+#
+#  URLs:  App http://localhost:8080 · API docs http://localhost:8080/api/docs
+#         Prometheus http://localhost:9090 · Grafana http://localhost:3000
+# =====================================================================
+name: helpdesk-pro
+
+services:
+  # ---------------------------------------------------------- Base de datos
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mesa_ayuda_it}
+      POSTGRES_USER: ${POSTGRES_USER:-helpdesk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-helpdesk_pass}
+    volumes:
+      - pgdata:/var/lib/postgresql/data        # los datos sobreviven a reinicios
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------- Caché compartida
+  # Redis guarda los contadores del límite de intentos de login para que TODAS
+  # las réplicas del backend compartan el mismo conteo (ver docs/adr/0007)
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  # ---------------------------------------------------------- API Flask
+  backend:
+    build:
+      context: .                               # raíz: necesita docs/openapi.yaml
+      dockerfile: backend/Dockerfile
+    image: helpdesk-backend:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy             # espera a que PostgreSQL esté listo
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-helpdesk}:${POSTGRES_PASSWORD:-helpdesk_pass}@db:5432/${POSTGRES_DB:-mesa_ayuda_it}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-cambia-esta-clave-larga-de-produccion-en-el-archivo-env}
+      CORS_ORIGINS: http://localhost:8080
+      TRUST_PROXY: "1"                         # viene detrás de Nginx
+      RATELIMIT_STORAGE_URI: redis://redis:6379/0
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin_soporte}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-super_secreta_123}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@helpdesk.local}
+    ports:
+      - "5000:5000"                            # opcional: acceso directo a la API
+
+  # ---------------------------------------------------------- React + Nginx
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ""                       # mismo dominio: Nginx reenvía /api al backend
+    image: helpdesk-frontend:latest
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+  # ---------------------------------------------------------- Monitorización
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/helpdesk.json
+      # Solo lectura sin login: el botón "Monitoreo" del frontend abre el dashboard directo.
+      # Para editar se sigue entrando con el usuario admin.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:

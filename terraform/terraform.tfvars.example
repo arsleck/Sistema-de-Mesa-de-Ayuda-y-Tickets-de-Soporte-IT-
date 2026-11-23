@@ -1,0 +1,22 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is ignored by Git: it contains secrets.
+
+project_name = "helpdesk"
+environment  = "dev"
+location     = "eastus2"
+
+# Images published by the GitHub Actions pipeline
+backend_image  = "ghcr.io/arsleck/helpdesk-backend:latest"
+frontend_image = "ghcr.io/arsleck/helpdesk-frontend:latest"
+
+# Only if the GHCR packages are private (create a token with read:packages)
+registry_username = ""
+registry_password = ""
+
+db_admin_password = "Change-Me-Str0ng-Passw0rd!"
+jwt_secret_key    = "change-me-to-a-random-string-of-at-least-32-chars"
+admin_password    = "Change-Me-Admin-123"
+
+backend_min_replicas = 1
+backend_max_replicas = 5
+enable_redis         = false

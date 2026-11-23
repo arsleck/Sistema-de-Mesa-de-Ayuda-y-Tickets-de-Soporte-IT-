@@ -1,0 +1,219 @@
+# =====================================================================
+#  HelpDesk Pro – CI/CD pipeline (Activity 7: GitHub Actions)
+#
+#  Stages:  test  ->  build  ->  deploy
+#   1. backend-tests     : pytest integration suite + OWASP security evidence
+#   2. frontend-build    : ESLint + Vite production build
+#   3. validate-iac      : Kubernetes manifests (kubeconform) + Terraform fmt/validate
+#   4. docker-images     : build both images and push them to GitHub Container Registry
+#   5. deploy-kubernetes : deploy to an ephemeral Kubernetes cluster (kind) and smoke test it
+#   6. deploy-azure      : terraform apply to Azure (only on main, when enabled)
+# =====================================================================
+name: CI/CD
+
+on:
+  push:
+    branches: [main, develop, "feature/**", "release/**"]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write   # needed to push images to ghcr.io
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/helpdesk
+
+jobs:
+  # -------------------------------------------------------------------- TEST
+  backend-tests:
+    name: Backend tests (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run integration tests
+        run: pytest
+
+      - name: Run OWASP security evidence against a live server
+        env:
+          DATABASE_URL: sqlite:////tmp/ci.db
+          JWT_SECRET_KEY: ci-only-secret-key-that-is-long-enough-123456
+        run: |
+          gunicorn --bind 127.0.0.1:5000 --threads 4 run:app --daemon
+          sleep 3
+          python security/evidencia_seguridad.py --md reports/security_evidence.md
+          grep -q "14/14" reports/security_evidence.md   # fail the build if any control is vulnerable
+
+      - name: Upload test and security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-reports
+          path: backend/reports/
+
+  frontend-build:
+    name: Frontend lint and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+
+  validate-iac:
+    name: Validate Kubernetes and Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Kubernetes manifests (kubeconform)
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          ./kubeconform -summary -strict k8s/*.yaml
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform format check
+        run: terraform fmt -check -recursive terraform/
+
+      - name: Terraform validate
+        working-directory: terraform
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+  # -------------------------------------------------------------------- BUILD
+  docker-images:
+    name: Build and push Docker images
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-build, validate-iac]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}-backend:${{ github.ref_name == 'main' && 'latest' || 'dev' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}-frontend:${{ github.ref_name == 'main' && 'latest' || 'dev' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # -------------------------------------------------------------------- DEPLOY
+  deploy-kubernetes:
+    name: Deploy to Kubernetes (kind) and smoke test
+    runs-on: ubuntu-latest
+    needs: docker-images
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create ephemeral Kubernetes cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: helpdesk
+
+      - name: Build images for the cluster
+        run: |
+          docker build -t helpdesk-backend:latest -f backend/Dockerfile .
+          docker build -t helpdesk-frontend:latest frontend
+
+      - name: Deploy manifests
+        env:
+          CLUSTER: kind
+          KIND_CLUSTER: helpdesk
+        run: bash k8s/deploy.sh
+
+      - name: Smoke test through the frontend Service
+        run: |
+          kubectl port-forward -n helpdesk svc/frontend 8081:80 &
+          sleep 5
+          curl -fsS http://localhost:8081/health | tee health.json
+          grep -q '"database":"ok"' health.json
+          curl -fsS http://localhost:8081/ | grep -q '<div id="root">'
+          echo "Deployment healthy"
+
+      - name: Show cluster state on failure
+        if: failure()
+        run: |
+          kubectl get all -n helpdesk
+          kubectl describe pods -n helpdesk | tail -n 80
+          kubectl logs -n helpdesk deployment/backend --tail=50
+
+  deploy-azure:
+    name: Deploy to Azure (Terraform)
+    runs-on: ubuntu-latest
+    needs: deploy-kubernetes
+    # Runs only on main and only when the repository variable AZURE_DEPLOY is "true"
+    if: github.ref == 'refs/heads/main' && vars.AZURE_DEPLOY == 'true'
+    environment: production
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      TF_VAR_backend_image: ghcr.io/${{ github.repository_owner }}/helpdesk-backend:${{ github.sha }}
+      TF_VAR_frontend_image: ghcr.io/${{ github.repository_owner }}/helpdesk-frontend:${{ github.sha }}
+      TF_VAR_db_admin_password: ${{ secrets.DB_ADMIN_PASSWORD }}
+      TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+      TF_VAR_admin_password: ${{ secrets.APP_ADMIN_PASSWORD }}
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init
+      - run: terraform plan -out=tfplan
+      - run: terraform apply -auto-approve tfplan
+      - name: Public URL
+        run: terraform output -raw frontend_url

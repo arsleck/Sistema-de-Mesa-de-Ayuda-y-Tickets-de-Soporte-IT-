@@ -1,0 +1,50 @@
+# Reglas de alerta (se ven en Prometheus -> Alerts)
+groups:
+  - name: helpdesk
+    rules:
+      - alert: BackendCaido
+        expr: up{job="helpdesk-backend"} == 0
+        for: 30s
+        labels: { severity: critical }
+        annotations:
+          summary: "El backend de HelpDesk Pro no responde"
+
+      - alert: AltaTasaDeErrores
+        expr: sum(rate(flask_http_request_total{status=~"5.."}[1m])) / sum(rate(flask_http_request_total[1m])) > 0.05
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "Más del 5% de las peticiones terminan en error 5xx"
+
+      - alert: LatenciaAlta
+        expr: histogram_quantile(0.95, sum(rate(flask_http_request_duration_seconds_bucket[1m])) by (le)) > 0.5
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "El 95% de las peticiones tarda más de 500 ms"
+
+      - alert: MuchosTicketsAltaPrioridadAbiertos
+        expr: helpdesk_tickets_by_priority{priority="Alta"} > 10
+        labels: { severity: info }
+        annotations:
+          summary: "Hay más de 10 tickets de prioridad Alta"
+
+  # ---------------------------------------------------------------- SLA de la mesa de ayuda
+  - name: helpdesk-sla
+    rules:
+      - alert: SLAAltaPrioridadSinAsignar
+        expr: helpdesk_high_priority_unassigned > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Hay tickets de prioridad Alta sin técnico asignado desde hace más de 5 minutos"
+
+      - alert: SLAResolucionLenta
+        # Menos del 80 % de los tickets resueltos en la última hora se resolvió en menos de 4 horas
+        expr: |
+          sum(increase(helpdesk_ticket_resolution_seconds_bucket{le="14400.0"}[1h]))
+            / clamp_min(sum(increase(helpdesk_ticket_resolution_seconds_count[1h])), 1) < 0.8
+          and sum(increase(helpdesk_ticket_resolution_seconds_count[1h])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Menos del 80 % de los tickets se está resolviendo dentro del SLA de 4 horas"

@@ -1,7 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, LogOut, PlusCircle, Search, Ticket as TicketIcon, Trash2, UserCircle, Briefcase } from 'lucide-react';
-import api from '../api/axiosConfig';
+import { LayoutDashboard, Users, LogOut, ClipboardCheck, PlusCircle, Search, Ticket as TicketIcon, Trash2, UserCircle, Briefcase, History, Activity, AlertTriangle } from 'lucide-react';
+import api, { logoutSession } from '../api/axiosConfig';
+import TicketHistory from '../components/TicketHistory';
+
+// Grafana: VITE_GRAFANA_URL o, por defecto, el puerto de Grafana según el entorno
+// (Kubernetes con port-forward usa 8081 -> 3001; Docker Compose / local usa 3000)
+const GRAFANA_URL = import.meta.env.VITE_GRAFANA_URL
+    ?? `http://${window.location.hostname}:${window.location.port === '8081' ? 3001 : 3000}`;
 
 function Tickets() {
     const [tickets, setTickets] = useState([]);
@@ -11,35 +17,51 @@ function Tickets() {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('Todos');
     const [agents, setAgents] = useState([]);
+    const [historyTicket, setHistoryTicket] = useState(null); // ticket cuyo historial está abierto
+    const [stats, setStats] = useState(null);                 // indicadores (incluye SLA) para el staff
 
     const navigate = useNavigate();
     const currentUsername = localStorage.getItem('username') || 'Usuario';
     const currentUserRole = localStorage.getItem('role') || 'employee';
 
+    // Cierra la sesión en el servidor (revoca el JWT) y vuelve al login
+    const handleLogout = useCallback(async () => {
+        await logoutSession();
+        navigate('/login');
+    }, [navigate]);
+
+    // useCallback: las funciones se declaran antes del useEffect que las usa (regla de React Hooks)
+    const fetchTickets = useCallback(async () => {
+        try {
+            const response = await api.get('/tickets');
+            setTickets(response.data);
+            // El staff recibe además los indicadores de SLA (tickets urgentes sin asignar)
+            if (currentUserRole !== 'employee') {
+                const statsRes = await api.get('/tickets/stats');
+                setStats(statsRes.data);
+            }
+        } catch (error) {
+            if (error.response?.status === 401) handleLogout();
+        }
+    }, [handleLogout, currentUserRole]);
+
+    const fetchAgents = useCallback(async () => {
+        try {
+            const response = await api.get('/auth/agents');
+            setAgents(response.data);
+        } catch {
+            console.error("Error al cargar agentes");
+        }
+    }, []);
+
+    // Carga inicial de datos desde la API al abrir la página
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- petición asíncrona a la API (patrón válido de carga de datos)
         fetchTickets();
         if (currentUserRole !== 'employee') {
             fetchAgents();
         }
-    }, [currentUserRole]);
-
-    const fetchTickets = async () => {
-        try {
-            const response = await api.get('/tickets');
-            setTickets(response.data);
-        } catch (error) {
-            if (error.response?.status === 401) handleLogout();
-        }
-    };
-
-    const fetchAgents = async () => {
-        try {
-            const response = await api.get('/auth/agents');
-            setAgents(response.data);
-        } catch (error) {
-            console.error("Error al cargar agentes");
-        }
-    };
+    }, [currentUserRole, fetchTickets, fetchAgents]);
 
     const handleCreateTicket = async (e) => {
         e.preventDefault();
@@ -47,7 +69,7 @@ function Tickets() {
             await api.post('/tickets', { title, description, priority });
             setTitle(''); setDescription(''); setPriority('Media');
             fetchTickets();
-        } catch (error) {
+        } catch {
             alert("Error al crear el ticket.");
         }
     };
@@ -56,7 +78,7 @@ function Tickets() {
         try {
             await api.put(`/tickets/${id}`, { status: newStatus });
             fetchTickets();
-        } catch (error) {
+        } catch {
             alert("Error al actualizar estado.");
         }
     };
@@ -66,16 +88,12 @@ function Tickets() {
             try {
                 await api.delete(`/tickets/${id}`);
                 fetchTickets(); 
-            } catch (error) {
+            } catch {
                 alert("Error al eliminar.");
             }
         }
     };
 
-    const handleLogout = () => {
-        localStorage.clear();
-        navigate('/login');
-    };
 
     const filteredTickets = tickets.filter(ticket => {
         const matchesSearch = ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -109,6 +127,17 @@ function Tickets() {
                         <button onClick={() => navigate('/admin')} className="nav-item">
                             <Users size={20} /> Gestión de Agentes
                         </button>
+                    )}
+                    {currentUserRole !== 'employee' && (
+                        <button onClick={() => navigate('/verificacion')} className="nav-item">
+                            <ClipboardCheck size={20} /> Verificación
+                        </button>
+                    )}
+                    {currentUserRole !== 'employee' && (
+                        // Abre el dashboard de Grafana (Prometheus) en otra pestaña
+                        <a href={GRAFANA_URL} target="_blank" rel="noreferrer" className="nav-item">
+                            <Activity size={20} /> Monitoreo
+                        </a>
                     )}
                     <button onClick={handleLogout} className="nav-item logout">
                         <LogOut size={20} /> Cerrar Sesión
@@ -172,6 +201,14 @@ function Tickets() {
 
                     {/* Panel Derecho: Lista de Tickets */}
                     <div className="list-section">
+                        {/* AVISO DE SLA: incidencias urgentes que nadie ha tomado */}
+                        {stats?.high_priority_unassigned > 0 && (
+                            <div className="error-message sla-alert">
+                                <AlertTriangle size={18} />
+                                {stats.high_priority_unassigned} ticket(s) de prioridad Alta sin técnico asignado (SLA)
+                            </div>
+                        )}
+
                         {/* MÉTRICAS (Solo visibles para staff) */}
                         {currentUserRole !== 'employee' && (
                             <div className="metrics-grid">
@@ -205,6 +242,9 @@ function Tickets() {
                                                 <span className={`badge badge-${ticket.priority.toLowerCase()}`}>
                                                     {ticket.priority}
                                                 </span>
+                                                <button onClick={() => setHistoryTicket(ticket)} className="icon-btn" title="Ver historial de cambios">
+                                                    <History size={18} />
+                                                </button>
                                                 {(currentUserRole === 'admin' || currentUserRole === 'agent') && (
                                                     <button onClick={() => handleDeleteTicket(ticket.id)} className="icon-btn delete">
                                                         <Trash2 size={18} />
@@ -242,7 +282,7 @@ function Tickets() {
                                                             try {
                                                                 await api.put(`/tickets/${ticket.id}`, { assigned_to_id: e.target.value || null });
                                                                 fetchTickets();
-                                                            } catch (error) { alert("Error"); }
+                                                            } catch { alert("Error"); }
                                                         }}
                                                         className="clean-select assign"
                                                     >
@@ -259,6 +299,9 @@ function Tickets() {
                     </div>
                 </div>
             </main>
+
+            {/* Ventana del historial de cambios (auditoría) */}
+            {historyTicket && <TicketHistory ticket={historyTicket} onClose={() => setHistoryTicket(null)} />}
         </div>
     );
 }

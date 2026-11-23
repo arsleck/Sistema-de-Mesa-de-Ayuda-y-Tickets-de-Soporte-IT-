@@ -1,0 +1,7 @@
+# Espacio de nombres: agrupa todos los recursos de HelpDesk Pro dentro del clúster
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: helpdesk
+  labels:
+    app.kubernetes.io/part-of: helpdesk-pro
