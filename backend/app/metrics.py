@@ -33,18 +33,23 @@ class TicketStatsCollector:
 
     def collect(self):
         from app import db
-        from app.models.ticket import Ticket
+        from app.models.ticket import Ticket, VALID_PRIORITIES, VALID_STATUSES
         from sqlalchemy import func
 
         by_status = GaugeMetricFamily('helpdesk_tickets', 'Tickets actuales por estado', labels=['status'])
         by_priority = GaugeMetricFamily('helpdesk_tickets_by_priority', 'Tickets por prioridad', labels=['priority'])
         try:
             with self.app.app_context():
-                for status, n in db.session.query(Ticket.status, func.count(Ticket.id)).group_by(Ticket.status):
-                    by_status.add_metric([status or 'Sin estado'], n)
-                for prio, n in db.session.query(Ticket.priority, func.count(Ticket.id)).group_by(Ticket.priority):
-                    by_priority.add_metric([prio or 'Sin prioridad'], n)
+                # Se parte de 0 para cada estado/prioridad: así Grafana muestra 0 y no "No data"
+                status_counts = {s: 0 for s in VALID_STATUSES}
+                status_counts.update(dict(db.session.query(Ticket.status, func.count(Ticket.id)).group_by(Ticket.status).all()))
+                priority_counts = {p: 0 for p in VALID_PRIORITIES}
+                priority_counts.update(dict(db.session.query(Ticket.priority, func.count(Ticket.id)).group_by(Ticket.priority).all()))
                 db.session.remove()
+            for status, n in status_counts.items():
+                by_status.add_metric([status], n)
+            for prio, n in priority_counts.items():
+                by_priority.add_metric([prio], n)
         except Exception:
             pass  # si la BD no responde, /metrics sigue funcionando
         yield by_status
