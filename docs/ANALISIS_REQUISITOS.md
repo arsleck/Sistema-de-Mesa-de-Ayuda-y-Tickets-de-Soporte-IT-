@@ -97,3 +97,20 @@ El estado final de cada requisito se actualiza en la sección 3 al cierre de cad
 | Terraform (en inglés) | ✅ | `terraform/` — Azure Container Apps + PostgreSQL Flexible |
 | Escalabilidad compartida entre réplicas | ✅ | Redis para el límite de intentos (`docs/adr/0007`) |
 | Decisiones de arquitectura justificadas | ✅ | `docs/adr/` (10 ADR) |
+| Extra: historial de cambios (auditoría) | ✅ | Tabla `ticket_history`, `GET /api/tickets/<id>/history`, ventana en el frontend |
+| Extra: SLA (tiempo de resolución, urgentes sin asignar) | ✅ | Métricas + 2 alertas + fila SLA en Grafana + aviso en el dashboard (`docs/adr/0011`) |
+| Extra: acceso a monitoreo desde la app | ✅ | Botón "Monitoreo" → Grafana (lectura sin login) |
+
+---
+
+## 4. Resumen final de verificación
+
+| Evidencia | Resultado |
+|---|---|
+| Pruebas de integración (pytest) | 31/31 ✅ |
+| Colección Postman | 26 peticiones · 34 aserciones ✅ |
+| Seguridad OWASP antes → después | 2/14 → 14/14 ✅ |
+| Centro de verificación (navegador) | 11/11 ✅ |
+| Docker Compose (6 servicios) | En ejecución, verificado en el navegador ✅ |
+| Kubernetes: prueba de carga | 6514 peticiones, 0 errores, HPA 2 → 6 réplicas ✅ |
+| Pipeline GitHub Actions | 6 jobs en verde ✅ |

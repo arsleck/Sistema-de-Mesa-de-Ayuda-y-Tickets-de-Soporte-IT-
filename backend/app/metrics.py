@@ -14,13 +14,19 @@ import socket
 import time
 
 from flask import g, request
-from prometheus_client import Counter
+from prometheus_client import Counter, Histogram
 from prometheus_client.core import GaugeMetricFamily, REGISTRY
 from prometheus_flask_exporter import PrometheusMetrics
 
 # ---------------------------------------------------------------- Contadores de negocio
 TICKETS_CREATED = Counter('helpdesk_tickets_created_total', 'Tickets creados', ['priority'])
 LOGIN_ATTEMPTS = Counter('helpdesk_login_attempts_total', 'Intentos de inicio de sesión', ['result'])
+
+# SLA: cuánto tarda un ticket desde que se crea hasta que se marca "Resuelto".
+# Los "buckets" son los cortes del SLA: 15 min, 1 h, 4 h, 8 h, 1 día, 3 días.
+RESOLUTION_TIME = Histogram(
+    'helpdesk_ticket_resolution_seconds', 'Tiempo de resolución de tickets (SLA)', ['priority'],
+    buckets=(60, 900, 3600, 4 * 3600, 8 * 3600, 24 * 3600, 72 * 3600))
 
 POD_NAME = os.getenv('HOSTNAME', socket.gethostname())  # en Kubernetes = nombre del pod
 
@@ -38,6 +44,10 @@ class TicketStatsCollector:
 
         by_status = GaugeMetricFamily('helpdesk_tickets', 'Tickets actuales por estado', labels=['status'])
         by_priority = GaugeMetricFamily('helpdesk_tickets_by_priority', 'Tickets por prioridad', labels=['priority'])
+        # SLA: incidencias urgentes que nadie ha tomado todavía (dispara una alerta en Prometheus)
+        urgent_unassigned = GaugeMetricFamily('helpdesk_high_priority_unassigned',
+                                              'Tickets de prioridad Alta, sin resolver y sin técnico asignado')
+        urgent = 0
         try:
             with self.app.app_context():
                 # Se parte de 0 para cada estado/prioridad: así Grafana muestra 0 y no "No data"
@@ -45,6 +55,8 @@ class TicketStatsCollector:
                 status_counts.update(dict(db.session.query(Ticket.status, func.count(Ticket.id)).group_by(Ticket.status).all()))
                 priority_counts = {p: 0 for p in VALID_PRIORITIES}
                 priority_counts.update(dict(db.session.query(Ticket.priority, func.count(Ticket.id)).group_by(Ticket.priority).all()))
+                urgent = Ticket.query.filter(Ticket.priority == 'Alta', Ticket.status != 'Resuelto',
+                                             Ticket.assigned_to_id.is_(None)).count()
                 db.session.remove()
             for status, n in status_counts.items():
                 by_status.add_metric([status], n)
@@ -52,8 +64,10 @@ class TicketStatsCollector:
                 by_priority.add_metric([prio], n)
         except Exception:
             pass  # si la BD no responde, /metrics sigue funcionando
+        urgent_unassigned.add_metric([], urgent)
         yield by_status
         yield by_priority
+        yield urgent_unassigned
 
 
 _collector_registered = False

@@ -25,6 +25,10 @@ class Ticket(db.Model):
     creator = db.relationship('User', foreign_keys=[created_by_id])
     assignee = db.relationship('User', foreign_keys=[assigned_to_id])
 
+    # Historial de cambios (auditoría): se borra junto con el ticket
+    history = db.relationship('TicketHistory', backref='ticket', cascade='all, delete-orphan',
+                              order_by='TicketHistory.created_at')
+
     def to_dict(self):
         """Convierte el ticket a JSON para enviarlo al frontend."""
         return {

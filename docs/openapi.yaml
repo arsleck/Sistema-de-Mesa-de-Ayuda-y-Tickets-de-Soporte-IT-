@@ -102,10 +102,21 @@ components:
         created_at: { type: string, format: date-time }
         creator_username: { type: string }
         assignee_username: { type: string, nullable: true }
+    HistoryEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        field: { type: string, enum: [creado, status, priority, assigned_to, title, description] }
+        old_value: { type: string, nullable: true }
+        new_value: { type: string, nullable: true }
+        user: { type: string }
+        created_at: { type: string, format: date-time }
     Stats:
       type: object
       properties:
         total: { type: integer }
+        avg_resolution_minutes: { type: number, nullable: true, description: "SLA: tiempo promedio de resolución" }
+        high_priority_unassigned: { type: integer, description: "SLA: tickets de prioridad Alta sin técnico" }
         unassigned: { type: integer }
         by_status:
           type: object
@@ -309,6 +320,23 @@ paths:
       responses:
         '200': { description: Métricas, content: { application/json: { schema: { $ref: '#/components/schemas/Stats' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/tickets/{id}/history:
+    get:
+      tags: [Tickets]
+      summary: Historial de cambios del ticket (auditoría)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Cambios en orden cronológico
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/HistoryEntry' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/tickets/{id}:
     parameters:

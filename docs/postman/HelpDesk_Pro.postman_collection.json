@@ -956,6 +956,48 @@
           ]
         },
         {
+          "name": "READ – historial de cambios (auditoría)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tickets/{{ticketId}}/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tickets",
+                "{{ticketId}}",
+                "history"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const h = pm.response.json();",
+                  "pm.test('Registra creación, estado y asignación', () => pm.expect(h.map(e => e.field)).to.include.members(['creado','status','assigned_to']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "DELETE – empleado intenta eliminar → 403",
           "request": {
             "method": "DELETE",
