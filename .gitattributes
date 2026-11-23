@@ -1,0 +1,11 @@
+# Finales de línea: archivos que se ejecutan en Linux (contenedores) siempre con LF
+*.sh          text eol=lf
+*.conf        text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+Dockerfile    text eol=lf
+*.tf          text eol=lf
+# Scripts de PowerShell con CRLF (Windows)
+*.ps1         text eol=crlf
+# Binarios
+*.png         binary
